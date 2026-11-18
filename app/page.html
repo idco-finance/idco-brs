@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bank Statement to Excel</title>
+  <link rel="icon" href="../icons/icon48.png">
+  <link rel="stylesheet" href="page.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img src="../icons/icon48.png" alt="" width="36" height="36">
+      <div>
+        <h1>Bank Statement to Excel</h1>
+        <p>Turns statement PDFs into one clean Excel sheet, proves every line against the running balance, and matches it with the Bank Book.</p>
+      </div>
+    </div>
+    <div class="private" title="The files are read by this page on your own computer.">Works on this computer only. Nothing is uploaded.</div>
+  </header>
+
+  <main>
+    <section id="drop" class="drop" tabindex="0" role="button" aria-label="Choose bank statement PDF files">
+      <div class="drop-icon" aria-hidden="true">PDF</div>
+      <div class="drop-title">Drop bank statement PDFs here</div>
+      <div class="drop-sub">or <span class="link">click to choose files</span>. You can add several months, and several accounts, together.<br>To match with the books, also drop the Bank Book workbooks from the Linearizer and the Eazypay files (.xlsx).<br>If you have already decided items in an earlier matching Excel, drop that saved file too.</div>
+      <input id="file" type="file" accept="application/pdf,.pdf,.xlsx" multiple hidden>
+    </section>
+
+    <section id="progress" class="progress" hidden>
+      <div class="bar"><div id="barfill" class="barfill"></div></div>
+      <div id="progtext" class="progtext">Reading…</div>
+    </section>
+
+    <section id="problems" class="problems" hidden></section>
+
+    <section id="toolbar" class="toolbar" hidden>
+      <div id="summaryline" class="summaryline"></div>
+      <div class="spacer"></div>
+      <button id="dlall" class="btn primary" hidden>Download all Excel files</button>
+      <button id="reset" class="btn ghost">Start again</button>
+    </section>
+
+    <section id="accounts" class="accounts"></section>
+
+    <section class="how" id="how">
+      <h2>How it works</h2>
+      <ol>
+        <li><b>Drop the PDFs.</b> Any order. If a file is locked, you will be asked for its password; the password is used once and not kept.</li>
+        <li><b>Read the result.</b> A green <span class="pill pass">PASS</span> means every line agrees with the running balance and with the totals the bank prints. An amber <span class="pill check">CHECK</span> tells you the page and line to look at.</li>
+        <li><b>Download the Excel file.</b> One file per bank account, with all the months joined in date order.</li>
+        <li><b>To match with the books (optional).</b> Drop the Bank Book workbooks made by the Bank Book Linearizer for the same account, and the Eazypay reports if the account has them. A second Excel file lists what matched and what needs a look.</li>
+        <li><b>To decide (optional).</b> In that second Excel file, open the To review sheet and fill the Decision column (Accept, Reject, Keep open) or type the other side in Match with. Save it. Next time drop it here with the other files: your decisions are applied again and only the undecided items come back.</li>
+      </ol>
+      <p class="fine">Scanned or photographed statements cannot be read, because they contain a picture and no text.</p>
+    </section>
+  </main>
+
+  <div id="pwmodal" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="pwtitle">
+      <h3 id="pwtitle">This statement is locked</h3>
+      <p id="pwfile" class="pwfile"></p>
+      <p id="pwmsg" class="pwmsg">Type the password given by the bank to open it.</p>
+      <input id="pwinput" type="password" autocomplete="off" placeholder="Password">
+      <label class="showpw"><input id="pwshow" type="checkbox"> Show password</label>
+      <div class="modal-actions">
+        <button id="pwskip" class="btn ghost">Skip this file</button>
+        <button id="pwok" class="btn primary">Open</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="foot"><span id="ver"></span></footer>
+
+  <script src="../lib/pdf.min.js"></script>
+  <script src="../lib/pdf.worker.min.js"></script>
+  <script src="../lib/exceljs.min.js"></script>
+  <script src="../core/pdftext.js"></script>
+  <script src="../core/reader.js"></script>
+  <script src="../core/classify.js"></script>
+  <script src="../core/merge.js"></script>
+  <script src="../core/workbook.js"></script>
+  <script src="../core/inputs.js"></script>
+  <script src="../core/reconcile.js"></script>
+  <script src="../core/scenarios.js"></script>
+  <script src="../core/decisions.js"></script>
+  <script src="../core/reconbook.js"></script>
+  <script src="page.js"></script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+Third-party libraries bundled with IDCO Bank Statement to Excel
+pdf.js 3.11.174 - Mozilla Foundation - Apache License 2.0 - https://github.com/mozilla/pdf.js
+ExcelJS 4.4.0 - Guyon Roche and contributors - MIT License - https://github.com/exceljs/exceljs
