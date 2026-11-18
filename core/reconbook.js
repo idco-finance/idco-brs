@@ -25,7 +25,11 @@
     while (i < list.length) {
       let j = i; while (j + 1 < list.length && list[j + 1][1] === list[i][1] && list[j + 1][2] === list[i][2] && list[j + 1][0] === list[j][0] + 1) j++;
       const L = ws.getColumn(list[i][1]).letter;
-      ws.dataValidations.model[L + list[i][0] + ':' + L + list[j][0]] = { type: 'list', allowBlank: true, formulae: [list[i][2]], showErrorMessage: true, errorTitle: 'Decision', error: 'Please choose from the list.' };
+      const f = list[i][2];
+      const tip = f === '"Keep open"' ? 'No match was found. Choose Keep open if it is a genuine open item - or leave this empty and type the voucher no. / bank line in Match with.'
+        : f === '"Accept,Reject"' ? 'The tool suggests a match (see What the tool found). Accept if it is right, Reject if it is not.'
+        : 'Accept or Reject a match, Keep open an open item, Undo to take a decision back.';
+      ws.dataValidations.model[L + list[i][0] + ':' + L + list[j][0]] = { type: 'list', allowBlank: true, formulae: [f], showErrorMessage: true, errorTitle: 'Decision', error: 'Please choose from the list.', showInputMessage: true, promptTitle: 'Decision', prompt: tip };
       i = j + 1;
     }
   }
@@ -72,12 +76,85 @@
     rec.vouchers.filter(v => SHOW.has(v.status) && v.found && !v.reviewed && !(v.status === 'Suggested' && v.bank.length)).forEach(v => pending.push({ x: v, st: v.status, date: v.vchDate, v: ['ERP books', d(v.vchDate), v.paidBy || v.party, rs(v.net)] }));
     rec.payments.filter(m => m.found && !m.reviewed).forEach(m => { const st = m.status === 'Booked in part' ? 'Needs review' : 'Not in books'; pending.push({ x: m, st, date: m.settle, v: ['Eazypay', d(m.settle), (m.partyCode ? m.partyCode + ' ' : '') + m.party, rs(m.amt)] }); });
     pending.sort((a, b) => (rankOf[a.st] - rankOf[b.st]) || a.date.localeCompare(b.date));
-    return pending;
+    const asOn = rec.brs && rec.brs.ready ? rec.brs.asOn : '';
+    return asOn ? pending.filter(p => p.date <= asOn) : pending;
+  }
+
+  const nd = iso => (iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4) : '');
+  function brsStatement(wb, rec, R, when, version) {
+    const fmt = rec.fmt; const ws = wb.addWorksheet('BRS', { views: [{ showGridLines: false }] });
+    ws.columns = [{ width: 86 }, { width: 9 }, { width: 22 }, { width: 70 }];
+    const T = ws.addRow(['BANK RECONCILIATION STATEMENT AS ON ' + nd(R.asOn)]); T.font = { bold: true, size: 14, color: { argb: TEAL } };
+    ws.addRow([R.bankName + ' - A/c ' + R.account + (R.opening.gl ? ' - GL ' + R.opening.gl : '') + (R.opening.name ? ' - ' + R.opening.name : '')]).font = { bold: true };
+    ws.addRow(['Period ' + nd(R.fy) + ' to ' + nd(R.asOn) + '. Made by IDCO Bank Statement to Excel v' + version + ' on ' + nd(when.toISOString().slice(0, 10)) + '. Opening position: BRS as on ' + nd(R.opening.asOn) + ' (' + R.opening.file + ').']).font = { color: { argb: 'FF6B7280' } };
+    ws.addRow([]);
+    const H = ws.addRow(['Particulars', 'Items', 'Amount (Rs.)', 'Note']); H.font = { bold: true, color: { argb: 'FFFFFFFF' } }; [1, 2, 3, 4].forEach(c => { H.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: TEAL } }; });
+    const money = r => { r.getCell(3).numFmt = MONEY; r.getCell(4).alignment = { wrapText: true, vertical: 'top' }; r.getCell(1).alignment = { wrapText: true, vertical: 'top' }; return r; };
+    const bookRow = money(ws.addRow(['Balance as per Bank Book as on ' + nd(R.asOn), '', null, 'Balance of the last BRS + vouchers of this year up to ' + nd(R.asOn) + '.'])); bookRow.font = { bold: true };
+    const r1 = money(ws.addRow(['     Balance as per Bank Book as on ' + nd(R.opening.asOn) + ' (last signed BRS)', '', rs(R.bookOpen)]));
+    const r2 = money(ws.addRow(['     Net of all vouchers dated ' + nd(R.fy) + ' to ' + nd(R.asOn) + ' (receipts less payments)', '', rs(R.bookMove)]));
+    bookRow.getCell(3).value = { formula: 'C' + r1.number + '+C' + r2.number, result: rs(R.book) };
+    const erp = money(ws.addRow(['     Balance as per the ERP Bank Book report as on ' + nd(R.asOn) + ' - type it here to cross-check', '', null]));
+    erp.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFBEB' } };
+    erp.getCell(4).value = { formula: 'IF(C' + erp.number + '="","Type the closing balance shown by the ERP to cross-check.",IF(ROUND(C' + erp.number + '-C' + bookRow.number + ',2)=0,"Agrees with the ERP.","Differs from the ERP by "&TEXT(C' + erp.number + '-C' + bookRow.number + ',"#,##0.00")&". Please check."))', result: 'Type the closing balance shown by the ERP to cross-check.' };
+    const lines = [];
+    for (const h of R.order) {
+      const t = R.totals[h]; if (!t.n && /^DIFF|^BOOKNET/.test(h)) continue;
+      const lab = R.heads[h];
+      const r = money(ws.addRow([lab, { formula: 'COUNTIFS(\'BRS items\'!B:B,A' + (ws.rowCount + 1) + ')', result: t.n }, { formula: 'SUMIFS(\'BRS items\'!F:F,\'BRS items\'!B:B,A' + (ws.rowCount + 1) + ')', result: rs(t.amt) }, t.n ? 'Listed in the sheet "BRS items" under this heading.' : '']));
+      lines.push([r.number, R.sign[h]]);
+    }
+    if (R.sweepN) { const r = money(ws.addRow([(R.sweep >= 0 ? 'Add' : 'Less') + ': Net amount moved by the bank between this account and its linked deposits (sweep)', R.sweepN, rs(Math.abs(R.sweep)), 'Shown as one net line. Sweeps are not entered in the Bank Book.'])); lines.push([r.number, R.sweep >= 0 ? 1 : -1]); }
+    const calc = money(ws.addRow(['Balance as per bank statement as on ' + nd(R.asOn) + ' (worked out)', '', { formula: 'C' + bookRow.number + lines.map(([n, sg]) => (sg > 0 ? '+' : '-') + 'C' + n).join(''), result: rs(R.computed) }])); calc.font = { bold: true };
+    const real = money(ws.addRow(['Balance as per bank statement as on ' + nd(R.asOn) + ' (printed by the bank)', '', rs(R.bank), 'From the bank statements given.'])); real.font = { bold: true };
+    const diff = money(ws.addRow(['Difference', '', { formula: 'C' + real.number + '-C' + calc.number, result: rs(R.diff) }, R.diff === 0 ? 'Nil: the statement agrees.' : 'Not nil: see the checks below.']));
+    diff.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: R.diff === 0 ? GREEN : RED } };
+    ws.addRow([]);
+    const sec = t => { const r = ws.addRow([t]); r.font = { bold: true, color: { argb: 'FFFFFFFF' } }; [1, 2, 3, 4].forEach(c => { r.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: TEAL } }; }); };
+    sec('Read this first');
+    const notes = [
+      'Prepared by the tool from the bank statements, the ERP Bank Book and the last signed BRS. It lists and adds up; it does not decide. Check the items before signing.',
+      'An item counts as settled only if both sides are dated on or before ' + nd(R.asOn) + '. Items settled later still appear here; the column "Settled after ' + nd(R.asOn) + '" in "BRS items" says when and how.',
+      R.suggested ? R.suggested + ' match(es) used in this BRS are only suggested by the tool. They are in the "To review" sheet: accept or reject them, and the BRS is worked out again next time.' : 'Every match used in this BRS is confirmed (no suggested matches).',
+      'Last signed BRS (' + nd(R.opening.asOn) + '): ' + R.opening.n + ' items; ' + R.opening.cleared + ' settled by ' + nd(R.asOn) + ', ' + R.opening.stillOpen + ' still open. See the sheet "Last BRS".'
+    ];
+    if (R.bookNet) notes.push('Receipts booked this year for money that came into the bank before 1 April, and reversals of suspense entries of the earlier year, have no bank entry this year. They are shown as one net line (' + fmt(Math.abs(R.bookNet.net)) + '); the vouchers are in the sheet "BRS book entries". Compare them with the suspense details of the earlier year.');
+    for (const t of notes) { const r = ws.addRow([t]); ws.mergeCells(r.number, 1, r.number, 4); r.getCell(1).alignment = { wrapText: true, vertical: 'top' }; r.height = t.length > 120 ? 32 : 18; }
+    ws.addRow([]); sec('Checks');
+    for (const c of R.checks) { const r = ws.addRow([c.what, c.pass ? 'PASS' : 'CHECK', '', c.detail]); r.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: c.pass ? GREEN : RED } }; r.getCell(1).alignment = { wrapText: true, vertical: 'top' }; r.getCell(4).alignment = { wrapText: true, vertical: 'top' }; }
+    ws.pageSetup = { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
+  }
+
+  function brsSchedules(wb, rec, R, h) {
+    const nice = rec.nice;
+    const w = sheet(wb, 'BRS items', [['No.', 6], ['Heading', 46], ['Date', 12, 'd'], ['Who', 34], ['Reference', 26, 't'], ['Amount', 18, 'm'], ['Particulars', 70], ['From', 22], ['Kind of item', 30], ['Days open', 9], ['Settled after ' + nd(R.asOn), 44], ['Status in matching', 16]]);
+    R.items.forEach(it => { const r = add(w, [it.no, R.heads[it.head], d(it.date), it.who, it.ref, rs(it.amt), it.what, it.source, it.kind, it.age, it.later, it.status], it.later ? 'Matched' : (it.status === 'Suggested' ? 'Suggested' : 'Not in books')); [2, 4, 7, 11].forEach(c => { r.getCell(c).alignment = { wrapText: true, vertical: 'top' }; }); });
+    finish(w);
+    if (R.bookNet) {
+      const wb2 = sheet(wb, 'BRS book entries', [['Kind', 30], ['Date', 12, 'd'], ['Voucher', 14], ['Who', 34], ['Amount (+ receipt, - payment)', 20, 'm'], ['Instrument date', 13, 'd'], ['Narration', 90]]);
+      R.bookNet.members.slice().sort((a, b) => a.date.localeCompare(b.date)).forEach(m => { const r = add(wb2, [m.head, d(m.date), m.id, m.who, rs(m.amt), d(m.instr), m.what], m.head.indexOf('Suspense') === 0 ? 'Suspense entry' : 'Earlier period'); r.getCell(7).alignment = { wrapText: true, vertical: 'top' }; });
+      const tr = wb2.addRow(['Net', null, '', '', { formula: 'SUM(E2:E' + wb2.rowCount + ')', result: rs(R.bookNet.net) }]); tr.font = { bold: true }; tr.getCell(5).numFmt = MONEY;
+      finish(wb2);
+    }
+    const ops = rec.opening || []; if (!ops.length) return;
+    const cleared = new Set(R.openingCleared || []);
+    const w3 = sheet(wb, 'Last BRS', [['No.', 6], ['Heading in the BRS of ' + nd(R.opening.asOn), 40], ['Date', 12, 't'], ['Party', 34], ['Reference', 26, 't'], ['Amount', 18, 'm'], ['As on ' + nd(R.asOn), 16], ['Settled by', 40], ['Decision', 13], ['Match with', 22, 't'], ['Remark', 30, 't'], ['Item key', 10, 't'], ['Linked keys', 10, 't'], ['Carried', 10, 't']]);
+    const NAMES = { BANK_CR: 'Amount credited by bank only', BANK_DR: 'Amount debited by bank only', DEPOSITED: 'Cheque deposited but not credited by bank', ISSUED: 'Cheque issued but not presented for payment' };
+    ops.forEach(o => {
+      const st = cleared.has(o.ikey) ? 'Settled' : 'Still open';
+      const by = (o.openLinks || []).map(x => (x.sl !== undefined && x.narration !== undefined ? 'bank line ' + x.sl + ' (' + nice(x.date) + ')' : x.blockId ? x.blockId + ' (' + nice(x.vchDate) + ')' : '')).filter(Boolean).join(', ');
+      const dec = o.decision || '', mw = o.matchWith ? o.matchWith.map(h.describe).join(', ') : '';
+      const r = add(w3, [o.no, NAMES[o.head], o.dateText, o.party, o.ref, rs(o.amt), st + (o.status === 'Suggested' ? ' (suggested)' : ''), by + (by && o.how ? ' - ' + o.how : ''), dec, mw, o.remark || '', o.ikey, h.linksOf(o).join(' '), h.sig(dec, mw, o.remark)], st === 'Settled' ? (o.status === 'Suggested' ? 'Suggested' : 'Matched') : 'Not in bank');
+      pick(r.getCell(9), '"Accept,Reject,Keep open,Undo"'); input(r.getCell(10)); input(r.getCell(11)); [4, 8].forEach(c => { r.getCell(c).alignment = { wrapText: true, vertical: 'top' }; });
+    });
+    h.hide(w3, ['Item key', 'Linked keys', 'Carried']); finish(w3);
   }
 
   function build(ExcelJS, rec, when, version) {
     const wb = new ExcelJS.Workbook(); wb.creator = 'IDCO Bank Statement to Excel v' + version; wb.created = when || new Date();
     const s = rec.summary, fmt = rec.fmt, nice = rec.nice;
+    const R0 = rec.brs && rec.brs.ready ? rec.brs : null;
+    if (R0) brsStatement(wb, rec, R0, when || new Date(), version);
     const dc = s.decisions, describe = rec.describe || (k => k), linksOf = rec.linksOf || (() => []);
     const pending = pendingOf(rec);
 
@@ -183,6 +260,7 @@
       pick(r.getCell(7), LIST_ALL); input(r.getCell(9));
     });
     hide(w5, ['Item key', 'Linked keys', 'Carried']); finish(w5);
+    if (R0) brsSchedules(wb, rec, R0, { sig, describe, linksOf, hide });
 
     // ---------------- BRS headings (the library of standard situations, with what this file holds of each)
     const w6 = sheet(wb, 'BRS headings', [['Kind of item', 44], ['Usual place in a BRS (from the balance as per Bank Book)', 52], ['What it means', 80], ['Items in this file', 10], ['Amount', 20, 'm'], ['How it is recognised', 44]]);

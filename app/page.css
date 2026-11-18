@@ -101,3 +101,15 @@ table.checks td.d { color: var(--muted); }
 .recon .fig { background: #fff; border: 1px solid #efe8d8; }
 .recon .fig.good .v { color: var(--pass-ink); } .recon .fig.warn .v { color: var(--check-ink); } .recon .fig.bad .v { color: var(--bad-ink); }
 .acc.waiting { border-style: dashed; color: var(--muted); } .acc.waiting b { color: var(--ink); } .acc.waiting p { margin: 4px 0 0; }
+
+.brs { margin: 12px 0 4px; background: #fff; border: 1px solid #efe8d8; border-radius: 12px; padding: 12px 14px; }
+.brs-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.brs select.month { font: inherit; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: #fff; }
+.brs .sub { color: var(--muted); font-size: 13px; }
+.brs-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+.brs-table td { padding: 5px 6px; border-bottom: 1px solid #f1ece0; vertical-align: top; }
+.brs-table td.n { width: 50px; text-align: right; color: var(--muted); }
+.brs-table td.amt { width: 190px; text-align: right; font-variant-numeric: tabular-nums; }
+.brs-table tr.tot td { font-weight: 650; }
+.brs-table tr.good td.amt { color: #0f766e; }
+.brs-table tr.bad td.amt { color: #b91c1c; }

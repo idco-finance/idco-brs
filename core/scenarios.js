@@ -73,7 +73,8 @@
     ['DATE_SHIFT', 'Match to confirm - Eazypay date one day away', NONE, 'The settlement credit equals the Eazypay total of the neighbouring day.', true],
     ['MANY_FIT', 'More than one voucher fits', DECIDE, 'Several vouchers have this amount and date; a person has to pick.', true],
     ['FILE_MISSING', 'Cannot be checked - a file is missing', DECIDE, 'The Eazypay report or the bank statement that covers this item was not given.', true],
-    ['UNTRACED', 'Voucher not traced to the bank', DECIDE, 'The voucher could not be followed to the statement.', true]
+    ['UNTRACED', 'Voucher not traced to the bank', DECIDE, 'The voucher could not be followed to the statement.', true],
+    ['OPENING', 'Clears an item of the last signed BRS', NONE, 'This entry of the new year settles an item that was open in the last signed BRS (same amount).', true]
   ].map(a => ({ code: a[0], name: a[1], brs: a[2], meaning: a[3], seen: a[4] }));
   const BY = {}; KINDS.forEach(k => { BY[k.code] = k; });
 
@@ -85,6 +86,7 @@
 
   function bankKind(b, own) {
     const u = ' ' + String(b.narration || '').toUpperCase() + ' ', cr = b.amt > 0;
+    if (b.opMatch) return 'OPENING';
     if (b.status === 'Sweep') return 'SWEEP';
     if (b.type === 'Chargeback') return 'CHARGEBACK';
     if (b.type === 'FD closure / interest') return /INT/.test(u.replace(/[^A-Z]/g, '')) ? 'INTEREST' : 'FD_PROCEEDS';
@@ -123,6 +125,7 @@
   }
 
   function voucherKind(v, lastBank, bankOf) {
+    if (v.opMatch) return 'OPENING';
     switch (v.status) {
       case 'Earlier period': return 'EARLIER';
       case 'After statement period': return 'AFTER';

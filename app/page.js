@@ -16,6 +16,8 @@
   let statements = [];        // every statement read so far
   let books = [], misFiles = [];   // Bank Book (Linearizer) and Eazypay files, for the matching step
   let reviews = [];           // matching workbooks saved with the reviewer's decisions
+  let brsFiles = [];          // last signed BRS workbooks (opening position)
+  const asOnOf = {};          // chosen BRS month-end, per account
   let problems = [];          // files that could not be read
   let accounts = [];
   let busy = false;
@@ -27,7 +29,7 @@
   ['dragenter', 'dragover'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
   ['dragleave', 'drop'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); if (ev === 'drop' || e.target === document.documentElement || e.relatedTarget === null) drop.classList.remove('over'); }));
   document.addEventListener('drop', e => { if (e.dataTransfer && e.dataTransfer.files.length) handleFiles(Array.from(e.dataTransfer.files)); });
-  $('reset').addEventListener('click', () => { statements = []; problems = []; accounts = []; books = []; misFiles = []; reviews = []; render(); });
+  $('reset').addEventListener('click', () => { statements = []; problems = []; accounts = []; books = []; misFiles = []; reviews = []; brsFiles = []; render(); });
   $('dlall').addEventListener('click', async () => { for (const a of accounts) { await download(a); await sleep(350); } });
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -66,10 +68,20 @@
     if (busy) return;
     const pdfs = files.filter(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf');
     const sheets = files.filter(f => /\.xlsx$/i.test(f.name));
-    const others = files.filter(f => !pdfs.includes(f) && !sheets.includes(f));
-    others.forEach(f => problems.push({ name: f.name, text: /\.xls$/i.test(f.name) ? 'Old-style .xls files cannot be read. Save it as .xlsx and drop it again.' : 'This is not a PDF or an Excel file. Drop bank statements as PDF, and the Bank Book and Eazypay files as .xlsx.' }));
-    if (!pdfs.length && !sheets.length) { render(); return; }
+    const oldSheets = files.filter(f => /\.xls$/i.test(f.name));
+    const others = files.filter(f => !pdfs.includes(f) && !sheets.includes(f) && !oldSheets.includes(f));
+    others.forEach(f => problems.push({ name: f.name, text: 'This is not a PDF or an Excel file. Drop bank statements as PDF, and the Bank Book and Eazypay files as .xlsx.' }));
+    if (!pdfs.length && !sheets.length && !oldSheets.length) { render(); return; }
     busy = true; progress.hidden = false; setProgress(0, 'Starting…');
+    for (const file of oldSheets) {
+      setProgress(0, 'Opening ' + file.name + '…'); await sleep(0);
+      try {
+        const x = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array', cellDates: true });
+        const grid = StatementOpening.fromSheetJS(XLSX, x);
+        if (StatementOpening.isBRS(grid)) { brsFiles = brsFiles.filter(b => b.fileName !== file.name); brsFiles.push({ fileName: file.name, grid }); }
+        else problems.push({ name: file.name, text: 'This old-style Excel file is not a BRS workbook. Bank Books and Eazypay reports have to be .xlsx files.' });
+      } catch (e) { problems.push({ name: file.name, text: 'This Excel file could not be opened' + (e && e.message ? ' (' + e.message + ').' : '.') }); }
+    }
     for (const file of sheets) {
       setProgress(0, 'Opening ' + file.name + '…'); await sleep(0);
       try {
@@ -80,7 +92,8 @@
         else if (kind === 'bankbook') { const b = StatementInputs.readBankBook(wb, file.name); books = books.filter(x => x.fileName !== b.fileName); books.push(b); }
         else if (kind === 'eazypay') { const m = StatementInputs.readEazypay(wb, file.name); misFiles = misFiles.filter(x => x.fileName !== m.fileName); misFiles.push(m); }
         else if (kind === 'erp-raw') problems.push({ name: file.name, text: 'This is the ERP\'s own Bank Book export. Please drop the clean workbook made by the Bank Book Linearizer instead (its name starts with IDCO_Clean_BankBook).' });
-        else problems.push({ name: file.name, text: 'This Excel file is not a Linearizer Bank Book, an Eazypay report or a matching Excel made by this tool, so it was not used.' });
+        else if (StatementOpening.isBRS(StatementOpening.fromExcelJS(wb))) { brsFiles = brsFiles.filter(b => b.fileName !== file.name); brsFiles.push({ fileName: file.name, grid: StatementOpening.fromExcelJS(wb) }); }
+        else problems.push({ name: file.name, text: 'This Excel file is not a Linearizer Bank Book, an Eazypay report, a BRS workbook or a matching Excel made by this tool, so it was not used.' });
       } catch (e) { problems.push({ name: file.name, text: 'This Excel file could not be opened' + (e && e.message ? ' (' + e.message + ').' : '.') }); }
     }
     for (let i = 0; i < pdfs.length; i++) {
@@ -118,18 +131,28 @@
   }
   // ------------------------------------------------------------ matching (when a Bank Book of the same account is loaded)
   const last4 = s => String(s || '').replace(/\D/g, '').slice(-4);
-  function runMatching() {
+  function runMatching(only) {
     for (const a of accounts) {
+      if (only && a !== only) continue;
       const mine = books.filter(b => last4(b.account) && last4(b.account) === last4(a.account));
       a.recon = null;
       if (!mine.length) continue;
       try {
         const rec = StatementReconcile.reconcile(a, mine, misFiles);
+        let op = null;
+        for (const bf of brsFiles) { const o = StatementOpening.read(bf.grid, a.account, bf.fileName); if (o) { op = o; break; } }
+        if (op) StatementBRS.matchOpening(rec, op);
         const rv = reviews.filter(r => last4(r.account) === last4(a.account)); const c = StatementDecisions.combine(rv);
         StatementDecisions.apply(rec, c.decisions, StatementReconcile); rec.reviewProblems = c.problems; rec.reviewFiles = rv.map(r => r.fileName);
         StatementScenarios.annotate(rec, { nameMatch: StatementReconcile.nameMatch });
+        rec.months = StatementBRS.months(a, rec); rec.op = op;
+        if (op && rec.months.length) {
+          const want = asOnOf[a.key]; const asOn = rec.months.includes(want) ? want : rec.months[rec.months.length - 1];
+          asOnOf[a.key] = asOn; rec.brs = StatementBRS.build(rec, op, a, asOn);
+        }
         rec.pendingCount = StatementReconBook.pendingOf(rec).length;
-        a.recon = rec; a.reconFile = a.fileName.replace('IDCO_Statement_', 'IDCO_Reconciliation_');
+        a.recon = rec;
+        a.reconFile = rec.brs && rec.brs.ready ? 'IDCO_BRS_' + a.short + '_' + a.account + '_as_on_' + rec.brs.asOn + '.xlsx' : a.fileName.replace('IDCO_Statement_', 'IDCO_Reconciliation_');
       } catch (e) { problems.push({ name: 'Matching', text: 'The matching step failed for A/c ' + a.account + (e && e.message ? ' (' + e.message + ').' : '.') }); }
     }
   }
@@ -231,8 +254,9 @@
     const t = el('div'); t.appendChild(el('b', '', 'Matching with the Bank Book'));
     t.appendChild(el('div', 'sub', s.bookFiles.length + ' Bank Book file(s), vouchers ' + nice(s.firstBook) + ' to ' + nice(s.lastBook) + '  ·  ' + s.misFiles.length + ' Eazypay file(s), ' + s.eazypay.payments + ' payments'));
     head.appendChild(t);
-    const btn = el('button', 'btn primary', 'Download matching Excel'); btn.addEventListener('click', () => downloadRecon(a)); head.appendChild(btn);
+    const btn = el('button', 'btn primary', a.recon.brs && a.recon.brs.ready ? 'Download BRS Excel' : 'Download matching Excel'); btn.addEventListener('click', () => downloadRecon(a)); head.appendChild(btn);
     box.appendChild(head);
+    box.appendChild(brsPanel(a));
     const grid = el('div', 'figs');
     const fig = (k, v, note, cls) => { const f = el('div', 'fig ' + (cls || '')); f.appendChild(el('div', 'k', k)); f.appendChild(el('div', 'v', String(v))); if (note) f.appendChild(el('div', 'n', note)); grid.appendChild(f); };
     fig('Bank lines matched', n('Matched'), 'of ' + s.bankLines, 'good');
@@ -255,8 +279,42 @@
     } else if (a.recon.reviewProblems && a.recon.reviewProblems.length) { const dl = el('div', 'look'); const ul = el('ul'); a.recon.reviewProblems.forEach(w => ul.appendChild(el('li', '', w))); dl.appendChild(el('b', '', 'Decisions:')); dl.appendChild(ul); box.appendChild(dl); }
     else if (a.recon.reviewFiles.length) box.appendChild(el('div', 'fine', 'The saved Excel ' + a.recon.reviewFiles.join(', ') + ' was read. It holds no decisions yet.'));
     if (s.notes.length) { const look = el('div', 'look'); const ul = el('ul'); s.notes.forEach(w => ul.appendChild(el('li', '', w))); look.appendChild(el('b', '', 'Note:')); look.appendChild(ul); box.appendChild(look); }
-    box.appendChild(el('div', 'fine', 'This is a matching sheet for review, not the signed BRS. Open the "To review" sheet of the Excel file, fill the Decision column, save the file and drop it back here next time.'));
+    box.appendChild(el('div', 'fine', (a.recon.brs && a.recon.brs.ready ? 'The BRS is prepared by the tool from the files given; check its items before signing. ' : 'This is a matching sheet for review, not the signed BRS. ') + 'Open the "To review" sheet of the Excel file, fill the Decision column, save the file and drop it back here next time.'));
     return box;
+  }
+
+  function brsPanel(a) {
+    const rec = a.recon, R = rec.brs, wrap = el('div', 'brs');
+    if (!rec.op) {
+      wrap.appendChild(el('b', '', 'BRS as on a month'));
+      wrap.appendChild(el('div', 'sub', brsFiles.length ? 'The BRS workbook given (' + brsFiles.map(b => b.fileName).join(', ') + ') has no column for A/c ' + a.account + '.' : 'To get the BRS statement, also drop the last signed BRS workbook (the yearly BRS Excel as on 31 March).'));
+      return wrap;
+    }
+    const top = el('div', 'brs-head');
+    top.appendChild(el('b', '', 'BRS as on '));
+    const sel = document.createElement('select'); sel.className = 'month';
+    rec.months.forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = nice(m); if (R && R.asOn === m) o.selected = true; sel.appendChild(o); });
+    sel.addEventListener('change', () => { asOnOf[a.key] = sel.value; runMatching(a); render(); });
+    top.appendChild(sel);
+    top.appendChild(el('span', 'sub', '  from 1 April. Last signed BRS: ' + rec.op.fileName + ' (as on ' + nice(rec.op.asOn) + ').'));
+    wrap.appendChild(top);
+    if (!R) { wrap.appendChild(el('div', 'sub', 'No complete month is covered by both the statements and the Bank Book yet.')); return wrap; }
+    if (!R.ready) { const ul = el('ul'); R.checks.filter(c => !c.pass).forEach(c => ul.appendChild(el('li', '', c.what + ': ' + c.detail))); const lk = el('div', 'look'); lk.appendChild(el('b', '', 'The BRS cannot be made yet:')); lk.appendChild(ul); wrap.appendChild(lk); return wrap; }
+    const tbl = el('table', 'brs-table');
+    const row = (label, amt, cls, n) => { const tr = el('tr', cls || ''); tr.appendChild(el('td', '', label)); tr.appendChild(el('td', 'n', n === undefined ? '' : String(n))); tr.appendChild(el('td', 'amt', amt === null ? '' : fmt(amt))); tbl.appendChild(tr); };
+    row('Balance as per Bank Book as on ' + nice(R.asOn), R.book, 'tot');
+    R.order.forEach(h => { const t = R.totals[h]; if (!t.n && /^DIFF|^BOOKNET/.test(h)) return; row(R.heads[h], t.amt, '', t.n); });
+    if (R.sweepN) row((R.sweep >= 0 ? 'Add' : 'Less') + ': Net amount moved between the account and linked deposits (sweep)', Math.abs(R.sweep), '', R.sweepN);
+    row('Balance as per bank statement (worked out)', R.computed, 'tot');
+    row('Balance as per bank statement (printed by the bank)', R.bank, 'tot');
+    row('Difference', R.diff, R.diff === 0 ? 'tot good' : 'tot bad');
+    wrap.appendChild(tbl);
+    const notes = [];
+    if (R.suggested) notes.push(R.suggested + ' match(es) in this BRS are only suggested by the tool: confirm them in the To review sheet.');
+    notes.push('Last signed BRS: ' + R.opening.n + ' items, ' + R.opening.cleared + ' settled by ' + nice(R.asOn) + ', ' + R.opening.stillOpen + ' still open.');
+    R.checks.filter(c => !c.pass).forEach(c => notes.push('CHECK - ' + c.what + ': ' + c.detail));
+    const ul = el('ul'); notes.forEach(t => ul.appendChild(el('li', '', t))); const nb = el('div', R.checks.some(c => !c.pass) ? 'look' : 'fine'); nb.appendChild(ul); wrap.appendChild(nb);
+    return wrap;
   }
 
   // ------------------------------------------------------------ Excel
@@ -278,6 +336,6 @@
   }
 
   // for automated tests
-  window.__statementTool = { handleFiles, getBooks: () => books, getReviews: () => reviews, getMis: () => misFiles, getAccounts: () => accounts, getProblems: () => problems, build: a => StatementWorkbook.build(ExcelJS, a, new Date()) };
+  window.__statementTool = { handleFiles, getBooks: () => books, getReviews: () => reviews, getBrsFiles: () => brsFiles, setAsOn: (key, d) => { asOnOf[key] = d; runMatching(); render(); }, getMis: () => misFiles, getAccounts: () => accounts, getProblems: () => problems, build: a => StatementWorkbook.build(ExcelJS, a, new Date()) };
   render();
 })();

@@ -20,7 +20,7 @@
   'use strict';
 
   const OPTIONS = ['Accept', 'Reject', 'Keep open', 'Undo'];
-  const SHEETS = ['To review', 'Bank lines', 'Vouchers', 'Decisions'];
+  const SHEETS = ['To review', 'Bank lines', 'Vouchers', 'Last BRS', 'Decisions'];
   const SEP = ' ¦ ';
 
   function val(c) {
@@ -68,7 +68,8 @@
     const s0 = wb.getWorksheet('Summary'); if (s0) { const m = str(s0.getRow(2).getCell(1).value).match(/A\/c\s+(\S+)/); if (m) out.account = m[1]; }
     const data = {}; SHEETS.forEach(n => { const ws = wb.getWorksheet(n); data[n] = ws ? rowsOf(ws) : []; });
     // what the saved workbook itself says about line numbers, voucher numbers and who is linked to whom
-    const lineKey = new Map(), vchKey = new Map(), links = new Map();
+    const lineKey = new Map(), vchKey = new Map(), links = new Map(), opKey = new Map();
+    for (const r of data['Last BRS']) { const k = str(r['Item key']); if (!k) continue; opKey.set(str(r['No.']), k); links.set(k, str(r['Linked keys']).split(' ').filter(Boolean)); }
     for (const r of data['Bank lines']) { const k = str(r['Item key']); if (!k) continue; lineKey.set(str(r.Line), k); links.set(k, str(r['Linked keys']).split(' ').filter(Boolean)); }
     for (const r of data.Vouchers) { const k = str(r['Item key']); if (!k) continue; const id = str(r.Voucher).toUpperCase().replace(/\s/g, ''); if (!vchKey.has(id)) vchKey.set(id, []); vchKey.get(id).push(k); links.set(k, str(r['Linked keys']).split(' ').filter(Boolean)); }
 
@@ -76,6 +77,8 @@
       const keys = []; let bad = '';
       for (let tok of String(text).split(/[,;\n]+|\s+and\s+|\s*&\s*|\s*\+\s*/i)) {
         tok = tok.trim(); if (!tok) continue;
+        const om = tok.match(/^(?:last[\s-]*brs|opening|op)\.?\s*(?:item)?\s*(?:no\.?)?\s*#?\s*(\d{1,5})$/i);
+        if (om) { const k = opKey.get(String(+om[1])); if (k) keys.push(k); else bad = bad || 'there is no item ' + om[1] + ' in the Last BRS sheet'; continue; }
         const m = tok.match(/^(?:bank\s*)?(?:line|l|sl|no)?\.?\s*#?\s*(\d{1,6})$/i);
         if (m) { const k = lineKey.get(String(+m[1])); if (k) keys.push(k); else bad = bad || 'there is no bank line ' + m[1]; continue; }
         const ks = vchKey.get(tok.toUpperCase().replace(/\s/g, ''));
@@ -134,20 +137,26 @@
   /** Several saved workbooks of one account: the one made last wins for an item. */
   function combine(reviews) {
     const m = new Map(); const problems = [];
-    reviews.slice().sort((a, b) => a.made - b.made).forEach(r => { r.decisions.forEach(d => m.set(d.key, d)); r.problems.forEach(p => problems.push(r.fileName + ' - ' + p)); });
+    const said = s2 => s2.decision + ' ' + (s2.with || []).slice().sort().join(' ');
+    reviews.slice().sort((a, b) => a.made - b.made).forEach(r => {
+      r.decisions.forEach(d => { const o = m.get(d.key); if (o && o.file !== d.file && said(o) !== said(d) && o.decision !== 'Remark' && d.decision !== 'Remark') problems.push('The same item was decided differently in ' + o.file + ' (' + o.decision + ') and in ' + d.file + ' (' + d.decision + '). The later file (' + d.file + ') was used. Item: ' + (d.label && d.label.what ? d.label.what : d.key) + '.'); m.set(d.key, d); });
+      r.problems.forEach(p => problems.push(r.fileName + ' - ' + p));
+    });
     return { decisions: Array.from(m.values()), problems };
   }
 
   // ------------------------------------------------------------------------------------------------ applying
   function apply(rec, decisions, R) {
     const B = rec.bankLines, V = rec.vouchers, fmt = rec.fmt, nice = rec.nice;
-    const idx = new Map(); B.forEach(b => { b.ikey = b.key; idx.set(b.key, b); }); V.forEach(v => idx.set(v.ikey, v)); rec.payments.forEach(m => idx.set(m.ikey, m));
+    const idx = new Map(); B.forEach(b => { b.ikey = b.key; idx.set(b.key, b); }); V.forEach(v => idx.set(v.ikey, v)); rec.payments.forEach(m => idx.set(m.ikey, m)); (rec.opening || []).forEach(o => idx.set(o.ikey, o));
+    const ol = x => x.openLinks || [];
+    const opSide = o => (o.head === 'BANK_CR' || o.head === 'BANK_DR' ? 'bank' : 'book'), opAmt = o => (o.head === 'BANK_CR' || o.head === 'DEPOSITED' ? o.amt : -o.amt);
     const kind = x => x.ikey[0];
-    const name = x => (kind(x) === 'B' ? 'bank line ' + x.sl : kind(x) === 'V' ? 'voucher ' + x.blockId : 'Eazypay URN ' + x.tran);
+    const name = x => (kind(x) === 'B' ? 'bank line ' + x.sl : kind(x) === 'V' ? 'voucher ' + x.blockId : kind(x) === 'O' ? 'item ' + x.no + ' of the last BRS' : 'Eazypay URN ' + x.tran);
     const names = xs => xs.map(name).join(', ');
-    const viaEazypay = x => (kind(x) === 'B' ? x.type === 'Eazypay settlement' : kind(x) === 'V' ? !!(x.hasUrn || x.ez) : true);
-    const partners = x => (kind(x) === 'B' ? V.filter(v => v.bank.includes(x.sl)).concat(x.setOff || []) : kind(x) === 'V' ? x.bank.map(sl => B[sl - 1]).concat(x.setOff || []) : []);
-    const linksOf = x => (kind(x) === 'B' && x.type === 'Eazypay settlement' ? (x.ezyShift ? ['S|' + x.ezy] : []) : kind(x) === 'V' && x.ez ? [] : partners(x).map(p => p.ikey));
+    const viaEazypay = x => (kind(x) === 'B' ? x.type === 'Eazypay settlement' && !ol(x).length : kind(x) === 'V' ? !!(x.hasUrn || x.ez) && !ol(x).length : kind(x) === 'O' ? false : true);
+    const partners = x => (kind(x) === 'B' ? V.filter(v => v.bank.includes(x.sl)).concat(x.setOff || [], ol(x)) : kind(x) === 'V' ? x.bank.map(sl => B[sl - 1]).concat(x.setOff || [], ol(x)) : kind(x) === 'O' ? ol(x).slice() : []);
+    const linksOf = x => (kind(x) === 'B' && x.type === 'Eazypay settlement' && !ol(x).length ? (x.ezyShift ? ['S|' + x.ezy] : []) : kind(x) === 'V' && x.ez && !ol(x).length ? [] : partners(x).map(p => p.ikey));
     function group(x) { const seen = new Set([x]); const q = [x]; while (q.length) { const y = q.pop(); for (const p of partners(y)) if (!seen.has(p) && !viaEazypay(p)) { seen.add(p); q.push(p); } } return Array.from(seen); }
     const whereB = b => 'Line ' + b.sl + ' of the Bank lines sheet. In the bank statement: ' + (b.file ? b.file + ', ' : '') + 'page ' + b.page + '.';
     const whereV = v => 'ERP voucher ' + v.blockId + ' dated ' + nice(v.vchDate) + (v.provNo ? ' (Prov No ' + v.provNo + ')' : '') + '. Bank Book file: ' + v.file + '.';
@@ -157,6 +166,8 @@
     function unlink(items) {
       for (const x of items) {
         const others = items.filter(y => y !== x);
+        if (kind(x) === 'O') { x.status = 'Open'; x.openLinks = []; x.how = 'The reviewer said the match with ' + names(others) + ' is not correct.'; x.decided = 'Reject'; continue; }
+        x.openLinks = []; x.opMatch = false;
         if (kind(x) === 'B') {
           const cr = x.amt > 0, amt = fmt(Math.abs(x.amt));
           x.status = 'Not in books'; x.how = ''; x.vouchers = []; x.lag = null; x._ins = null; x._many = null; x.setOff = null;
@@ -175,17 +186,19 @@
       }
     }
     function link(items, how) {
-      const bs = items.filter(x => kind(x) === 'B'), vs = items.filter(x => kind(x) === 'V');
-      const diff = bs.reduce((a, b) => a + b.amt, 0) - vs.reduce((a, v) => a + v.net, 0);
+      const bs = items.filter(x => kind(x) === 'B'), vs = items.filter(x => kind(x) === 'V'), os = items.filter(x => kind(x) === 'O');
+      const diff = bs.reduce((a, b) => a + b.amt, 0) + os.filter(o => opSide(o) === 'bank').reduce((a, o) => a + opAmt(o), 0) - vs.reduce((a, v) => a + v.net, 0) - os.filter(o => opSide(o) === 'book').reduce((a, o) => a + opAmt(o), 0);
+      for (const o of os) { o.status = 'Matched'; o.openLinks = bs.concat(vs); o.how = how; o.decided = 'Match'; }
+      for (const x of bs.concat(vs)) { x.openLinks = os.slice(); if (os.length) x.opMatch = true; }
       const note = diff === 0 ? '' : 'Matched by the reviewer although the amounts differ by ' + fmt(Math.abs(diff)) + ' (bank ' + (diff > 0 ? 'more' : 'less') + ' than books).';
       for (const b of bs) {
-        b.status = 'Matched'; b.vouchers = vs.map(v => v.blockId); b.setOff = vs.length ? null : bs.filter(o => o !== b);
-        b.how = how + (vs.length ? '' : ': set off against ' + names(bs.filter(o => o !== b))); b.note = note; b.decided = 'Match';
+        b.status = 'Matched'; b.vouchers = vs.map(v => v.blockId); b.setOff = vs.length || os.length ? null : bs.filter(o => o !== b);
+        b.how = how + (vs.length ? '' : os.length ? ': clears ' + names(os) : ': set off against ' + names(bs.filter(o => o !== b))); b.note = note; b.decided = 'Match';
         b.lag = vs.length ? Math.max.apply(null, vs.map(v => Math.round((Date.parse(v.vchDate) - Date.parse(b.date)) / 86400000))) : null;
       }
       for (const v of vs) {
-        v.status = 'Matched'; v.bank = bs.map(b => b.sl); v.setOff = bs.length ? null : vs.filter(o => o !== v);
-        v.how = how + (bs.length ? '' : ': set off against ' + names(vs.filter(o => o !== v))); v.note = note; v.decided = 'Match';
+        v.status = 'Matched'; v.bank = bs.map(b => b.sl); v.setOff = bs.length || os.length ? null : vs.filter(o => o !== v);
+        v.how = how + (bs.length ? '' : os.length ? ': clears ' + names(os) : ': set off against ' + names(vs.filter(o => o !== v))); v.note = note; v.decided = 'Match';
       }
       return diff;
     }
@@ -197,7 +210,7 @@
     for (const d of out) {
       const x = item(d);
       if (!x) { fail(d, 'this item is not in the files given this time. The decision is kept for when it is.'); d.absent = true; continue; }
-      d.label = { what: name(x).replace(/^./, c => c.toUpperCase()), date: kind(x) === 'B' ? x.date : kind(x) === 'V' ? x.vchDate : x.settle, who: kind(x) === 'B' ? (x.party || x.type) : kind(x) === 'V' ? who(x) : x.party, amt: kind(x) === 'B' ? x.amt : kind(x) === 'V' ? x.net : x.amt };
+      d.label = { what: name(x).replace(/^./, c => c.toUpperCase()), date: kind(x) === 'B' ? x.date : kind(x) === 'V' ? x.vchDate : kind(x) === 'O' ? x.date : x.settle, who: kind(x) === 'B' ? (x.party || x.type) : kind(x) === 'V' ? who(x) : x.party, amt: kind(x) === 'B' ? x.amt : kind(x) === 'V' ? x.net : kind(x) === 'O' ? opAmt(x) : x.amt };
       if (d.remark) x.remark = d.remark;
     }
     const live = d => !d.result;
@@ -207,7 +220,7 @@
     for (const d of out.filter(d => live(d) && d.decision === 'Reject')) {
       const x = item(d);
       if (kind(x) === 'E') { fail(d, 'an Eazypay payment has no match to reject.'); continue; }
-      if (kind(x) === 'B' && x.type === 'Eazypay settlement') {
+      if (kind(x) === 'B' && x.type === 'Eazypay settlement' && !ol(x).length) {
         if (!x.ezyShift) { fail(d, E_MSG); continue; }
         if (d.with.length && d.with[0] !== 'S|' + x.ezy) { fail(d, 'the tool now pairs this credit with another Eazypay total. Please look at it again.'); continue; }
         x.status = 'Needs review'; x.how = ''; x.decided = 'Reject';
@@ -244,7 +257,7 @@
     for (const d of out.filter(d => live(d) && d.decision === 'Accept')) {
       const x = item(d);
       if (kind(x) === 'E') { fail(d, 'an Eazypay payment has no suggested match. Use Keep open.'); continue; }
-      if (kind(x) === 'B' && x.type === 'Eazypay settlement') {
+      if (kind(x) === 'B' && x.type === 'Eazypay settlement' && !ol(x).length) {
         if (x.status === 'Matched') { done(d, 'Applied (already matched)'); continue; }
         if (!x.ezyShift || (d.with.length && d.with[0] !== 'S|' + x.ezy)) { fail(d, 'there is no suggested Eazypay total for this credit any more.'); continue; }
         x.status = 'Matched'; x.how += ' - date confirmed by the reviewer'; x.note = x.note.replace(/\s*Please confirm\./, ''); x.decided = 'Accept'; d.with = ['S|' + x.ezy]; done(d); continue;
@@ -264,6 +277,7 @@
     for (const d of out.filter(d => live(d) && d.decision === 'Keep open')) {
       const x = item(d);
       if (kind(x) === 'E') { if (x.status === 'Booked') done(d, 'Not needed any more: this payment is now booked.'); else { x.reviewed = 'Keep open'; done(d); } continue; }
+      if (kind(x) === 'O') { if (x.status === 'Open') { x.reviewed = 'Keep open'; done(d); } else if (x.status === 'Suggested') fail(d, 'this item has a suggested match. Choose Accept or Reject for it.'); else done(d, 'Not needed any more: it has been matched since (' + names(partners(x)) + ').'); continue; }
       if (x.status === 'Matched') { done(d, 'Not needed any more: the tool has matched this item since (' + names(partners(x)) + ').'); continue; }
       if (x.status === 'Suggested') { fail(d, 'this item has a suggested match. Choose Accept or Reject for it.'); continue; }
       x.reviewed = 'Keep open'; done(d);
@@ -272,7 +286,7 @@
 
     R.recount(rec);
     rec.decisions = out;
-    rec.describe = k => { if (k.slice(0, 2) === 'S|') return 'Eazypay total of ' + nice(k.slice(2)); const y = idx.get(k); return y ? (kind(y) === 'B' ? 'line ' + y.sl : kind(y) === 'V' ? y.blockId : y.tran) : '(not in these files)'; };
+    rec.describe = k => { if (k.slice(0, 2) === 'S|') return 'Eazypay total of ' + nice(k.slice(2)); const y = idx.get(k); return y ? (kind(y) === 'B' ? 'line ' + y.sl : kind(y) === 'V' ? y.blockId : kind(y) === 'O' ? 'last BRS ' + y.no : y.tran) : '(not in these files)'; };
     rec.linksOf = linksOf;
     rec.summary.decisions = { total: out.length, applied: out.filter(d => d.ok).length, notApplied: out.filter(d => !d.ok && !d.absent).length, absent: out.filter(d => d.absent).length,
       diff: out.reduce((a, d) => a + Math.abs(d.diff || 0), 0) };

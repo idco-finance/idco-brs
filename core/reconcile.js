@@ -388,7 +388,7 @@
     const pays = Array.from(M.values());
     const inLumps = pays.filter(m => m.bankSl !== null);
     const summary = {
-      bank: bank.bank, account: bank.account, firstBank, lastBank, firstBook, lastBook, bankLines: B.length, vouchers: V.length,
+      bank: bank.bank, account: bank.account, firstBank, lastBank, firstBook, lastBook, lastBookFile: bookFiles.map(f => f.to).sort().pop() || lastBook, bankLines: B.length, vouchers: V.length,
       bankBy, vBy,
       eazypay: { payments: pays.length, inStatement: inLumps.length, notInBooks: inLumps.filter(m => m.status === 'Not in books').length, notInBooksAmt: sum(inLumps.filter(m => m.status === 'Not in books'), m => m.amt),
         partly: inLumps.filter(m => m.status === 'Booked in part').length },
