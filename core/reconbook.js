@@ -149,6 +149,44 @@
   }
 
   const nd = iso => (iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4) : '');
+  // IDCO's own BRS layout: four headings only. The tool's extra lines are folded in by their sign and shown below.
+  const IDCO = { ISSUED: 'ISSUED', BANK_CR: 'BANK_CR', DIFF_PLUS: 'BANK_CR', BOOKNET_PLUS: 'ISSUED', DEPOSITED: 'DEPOSITED', BANK_DR: 'BANK_DR', DIFF_MINUS: 'DEPOSITED', BOOKNET_MINUS: 'DEPOSITED' };
+  const IDCO_LABEL = { ISSUED: 'Add Cheque issued but not presented for payment', BANK_CR: 'Add Amount Credited by Bank Only', DEPOSITED: 'Less Cheque deposited but not credited by Bank', BANK_DR: 'Less Debited by Bank Only' };
+  function idcoFormat(wb, rec, R) {
+    const ws = wb.addWorksheet('BRS (IDCO format)', { views: [{ showGridLines: false }] });
+    ws.columns = [{ width: 52 }, { width: 30 }, { width: 70 }];
+    const YEL = 'FFFFFF99', B = { style: 'thin', color: { argb: 'FF999999' } }, box = c => { c.border = { top: B, left: B, bottom: B, right: B }; };
+    const t = ws.addRow(['BANK RECONCILIATION STATEMENT AS ON ' + nd(R.asOn)]); t.font = { bold: true, size: 13 };
+    ws.addRow([]);
+    const totals = { ISSUED: 0, BANK_CR: 0, DEPOSITED: 0, BANK_DR: 0 }, parts = { ISSUED: [], BANK_CR: [], DEPOSITED: [], BANK_DR: [] };
+    for (const h of R.order) { const tt = R.totals[h]; if (!tt.n) continue; const k = IDCO[h]; totals[k] += tt.amt; parts[k].push([R.heads[h].replace(/^(Add|Less): /, ''), tt.n, tt.amt]); }
+    if (R.sweepN) { const k = R.sweep >= 0 ? 'BANK_CR' : 'BANK_DR'; totals[k] += Math.abs(R.sweep); parts[k].push(['Net amount moved by the bank to / from linked deposits (sweep)', R.sweepN, Math.abs(R.sweep)]); }
+    const head = ws.addRow(['Particulars', (R.opening.name || (R.bankName + ' A/C')).toUpperCase()]);
+    head.font = { bold: true }; head.height = 34; [1, 2].forEach(c => { const x = head.getCell(c); x.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: YEL } }; x.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; box(x); });
+    const line = (label, v, opt) => { opt = opt || {}; const r = ws.addRow([label, v]); [1, 2].forEach(c => box(r.getCell(c))); r.getCell(1).alignment = { wrapText: true, vertical: 'middle', horizontal: opt.center ? 'center' : 'left' }; r.getCell(2).alignment = { horizontal: opt.center ? 'center' : 'right', vertical: 'middle' }; if (typeof v === 'number' || (v && v.formula)) r.getCell(2).numFmt = MONEY; if (opt.bold) r.font = { bold: true }; if (opt.fill) [1, 2].forEach(c => { r.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: YEL } }; }); r.height = opt.h || 30; return r; };
+    line('GL CODE NO-', R.opening.gl || '', { center: true, bold: true, h: 20 });
+    line('A/C-NO-', R.account, { center: true, bold: true, h: 20 }).getCell(2).font = { bold: true, color: { argb: 'FF1D4ED8' } };
+    const rb = line('Balance as per Bank Book as on ' + nd(R.asOn), rs(R.book)); rb.getCell(1).font = { bold: true, color: { argb: 'FF7C2D5B' } };
+    const rows = {}; for (const k of ['ISSUED', 'BANK_CR', 'DEPOSITED', 'BANK_DR']) { rows[k] = line(IDCO_LABEL[k], rs(totals[k])); rows[k].getCell(1).font = { bold: true }; }
+    const n = k => 'B' + rows[k].number;
+    const res = R.book + totals.ISSUED + totals.BANK_CR - totals.DEPOSITED - totals.BANK_DR;
+    const rr = line('Balance as per Bank statement as on ' + nd(R.asOn), { formula: 'B' + rb.number + '+' + n('ISSUED') + '+' + n('BANK_CR') + '-' + n('DEPOSITED') + '-' + n('BANK_DR'), result: rs(res) }, { bold: true, fill: true });
+    const pr = ws.addRow(['Balance printed by the bank on ' + nd(R.asOn), rs(R.bank)]); pr.getCell(2).numFmt = MONEY; pr.getCell(1).font = { color: { argb: 'FF6B7280' } };
+    const df = ws.addRow(['Difference', { formula: 'B' + pr.number + '-B' + rr.number, result: rs(R.bank - res) }]); df.getCell(2).numFmt = MONEY; df.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: R.bank === res ? GREEN : RED } };
+    ws.addRow([]);
+    const sh = ws.addRow(['What each figure is made of', 'Amount (Rs.)', 'Where the items are']); sh.font = { bold: true, color: { argb: 'FFFFFFFF' } }; [1, 2, 3].forEach(c => { sh.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: TEAL } }; });
+    for (const k of ['ISSUED', 'BANK_CR', 'DEPOSITED', 'BANK_DR']) {
+      const r = ws.addRow([IDCO_LABEL[k], rs(totals[k])]); r.font = { bold: true }; r.getCell(2).numFmt = MONEY;
+      if (!parts[k].length) { ws.addRow(['     (nothing)']); continue; }
+      for (const [lab, cnt, amt] of parts[k]) { const q = ws.addRow(['     ' + lab, rs(amt), cnt + ' item' + (cnt > 1 ? 's' : '') + (/sweep/.test(lab) ? ' (Bank lines sheet, Status = Sweep)' : ' (BRS items sheet)')]); q.getCell(2).numFmt = MONEY; q.getCell(1).alignment = { wrapText: true }; }
+    }
+    ws.addRow([]);
+    const notes = ['Prepared by the tool from the files given. ' + (R.suggested ? R.suggested + ' match(es) are only suggested by the tool and are counted as settled until someone rejects them. ' : '') + 'The open items are listed in the sheet "BRS items"; check them before signing.',
+      'The four headings are those of the IDCO BRS. The tool\'s other lines (differences in matched entries, book entries with no bank entry this year, sweeps) have no heading of their own in that format, so each is put under the heading of the same sign, as shown above. Move them if the accounts section shows them differently.'];
+    for (const tx of notes) { const r = ws.addRow([tx]); ws.mergeCells(r.number, 1, r.number, 3); r.getCell(1).alignment = { wrapText: true, vertical: 'top' }; r.height = 44; }
+    ws.pageSetup = { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
+  }
+
   function brsStatement(wb, rec, R, when, version) {
     const fmt = rec.fmt; const ws = wb.addWorksheet('BRS', { views: [{ showGridLines: false }] });
     ws.columns = [{ width: 86 }, { width: 9 }, { width: 22 }, { width: 70 }];
@@ -195,8 +233,8 @@
 
   function brsSchedules(wb, rec, R, h) {
     const nice = rec.nice;
-    const w = sheet(wb, 'BRS items', [['No.', 6], ['Heading', 46], ['Date', 12, 'd'], ['Who', 34], ['Reference', 26, 't'], ['Amount', 18, 'm'], ['Particulars', 70], ['From', 22], ['Kind of item', 30], ['Days open', 9], ['Settled after ' + nd(R.asOn), 44], ['Status in matching', 16]]);
-    R.items.forEach(it => { const r = add(w, [it.no, R.heads[it.head], d(it.date), it.who, it.ref, rs(it.amt), it.what, it.source, it.kind, it.age, it.later, it.status], it.later ? 'Matched' : (it.status === 'Suggested' ? 'Suggested' : 'Not in books')); [2, 4, 7, 11].forEach(c => { r.getCell(c).alignment = { wrapText: true, vertical: 'top' }; }); });
+    const w = sheet(wb, 'BRS items', [['No.', 6], ['Heading', 46], ['Date', 12, 'd'], ['Who', 34], ['Reference', 26, 't'], ['Amount', 18, 'm'], ['Particulars', 70], ['From', 22], ['Kind of item', 30], ['Days open', 9], ['Settled after ' + nd(R.asOn), 44], ['Status in matching', 16], ['Heading in the IDCO format', 40]]);
+    R.items.forEach(it => { const r = add(w, [it.no, R.heads[it.head], d(it.date), it.who, it.ref, rs(it.amt), it.what, it.source, it.kind, it.age, it.later, it.status, IDCO_LABEL[IDCO[it.head]]], it.later ? 'Matched' : (it.status === 'Suggested' ? 'Suggested' : 'Not in books')); [2, 4, 7, 11].forEach(c => { r.getCell(c).alignment = { wrapText: true, vertical: 'top' }; }); });
     finish(w);
     if (R.bookNet) {
       const wb2 = sheet(wb, 'BRS book entries', [['Kind', 30], ['Date', 12, 'd'], ['Voucher', 14], ['Who', 34], ['Amount (+ receipt, - payment)', 20, 'm'], ['Instrument date', 13, 'd'], ['Narration', 90]]);
@@ -222,7 +260,7 @@
     const wb = new ExcelJS.Workbook(); wb.creator = 'IDCO Bank Statement to Excel v' + version; wb.created = when || new Date();
     const s = rec.summary, fmt = rec.fmt, nice = rec.nice;
     const R0 = rec.brs && rec.brs.ready ? rec.brs : null;
-    if (R0) brsStatement(wb, rec, R0, when || new Date(), version);
+    if (R0) { brsStatement(wb, rec, R0, when || new Date(), version); idcoFormat(wb, rec, R0); }
     const dc = s.decisions, describe = rec.describe || (k => k), linksOf = rec.linksOf || (() => []);
     const pending = pendingOf(rec);
 
