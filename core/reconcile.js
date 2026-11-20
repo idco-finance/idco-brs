@@ -214,6 +214,12 @@
       else if (c.length === 1) take(b, c, 'Suggested', 'Amount and date', 'Only voucher with this amount and date, but the party name differs: bank "' + (b.party || b.narration.slice(0, 40)) + '", books "' + c[0].v.party + '".');
       else if (c.length > 1) { b.status = 'Needs review'; b.note = 'Several vouchers fit this amount and date: ' + Array.from(new Set(c.map(n => n.v.blockId))).slice(0, 6).join(', ') + '. Pick the right one.'; b._many = c; }
     }
+    // B2b. the same, when bank and books differ only in paise (the ERP rounded, or the paise were left out)
+    for (const b of credits) {
+      if (b.status) continue;
+      const c = INS.filter(n => !n.usedBy && n.amt !== b.amt && Math.abs(n.amt - b.amt) < 100 && near(b, n) && nameMatch(n.v.party, bankName(b)) > 0);
+      if (new Set(c.map(n => n.v.key)).size === 1) take(b, [c[0]], 'Matched', 'Amount (paise apart), date and party name', 'The bank credited ' + fmt(b.amt) + ' and the voucher shows ' + fmt(c[0].amt) + ': they differ by ' + fmt(Math.abs(b.amt - c[0].amt)) + ' only. The difference is shown in the BRS.');
+    }
     // B3. one bank credit booked as several vouchers of the same party
     for (const b of credits) {
       if (b.status) continue;
