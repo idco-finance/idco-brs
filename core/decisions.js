@@ -22,6 +22,7 @@
   const OPTIONS = ['Accept', 'Reject', 'Keep open', 'Undo'];
   const SHEETS = ['To review', 'Bank lines', 'Vouchers', 'Last BRS', 'Decisions'];
   const SEP = ' ¦ ';
+  const GSEP = ' ;; ';
 
   function val(c) {
     if (c === null || c === undefined) return null;
@@ -97,14 +98,15 @@
         label: { what: str(r.Item), date: str(r.Date), who: str(r.Who), amt: typeof val(r.Amount) === 'number' ? Math.round(val(r.Amount) * 100) : null }, _carried: str(r.Carried), _row: r._row, _raw: str(r.Decision) });
     }
     for (const name of SHEETS) for (const r of data[name]) {
-      const k = str(r['Item key']); if (!k) continue;
+      const k0 = str(r['Item key']); if (!k0) continue;
       const dRaw = str(r.Decision), mw = name === 'Decisions' ? '' : str(r['Match with']), rem = str(r.Remark);
       const s = name === 'Decisions' ? sig(dRaw, '', rem) : sig(dRaw, mw, rem);
       const carried = str(r.Carried);
       if (name === 'Decisions' ? s === carried : (!s && !carried) || s === carried) continue;      // untouched row
-      if (!edits.has(k)) edits.set(k, []);
-      edits.get(k).push({ sheet: name, row: r._row, dRaw, mw, rem, s });
+      const keys = name === 'To review' ? k0.split(GSEP).filter(Boolean) : [k0];     // one To review row can stand for several entries
+      for (const k of keys) { if (!edits.has(k)) edits.set(k, []); edits.get(k).push({ sheet: name, row: r._row, dRaw, mw, rem, s, group: keys.length > 1 }); }
     }
+    const groupMw = new Set();
     out.seen = edits.size;
     const today = new Date().toISOString().slice(0, 10);
     for (const [k, list] of edits) {
@@ -122,6 +124,7 @@
       if (d === 'Undo' || (!d && !e.mw && !rem)) { base.delete(k); continue; }
       if (!d && !e.mw) { if (b) b.remark = rem; else base.set(k, { key: k, decision: 'Remark', with: [], remark: rem, on: today, label: null }); continue; }
       let rec = { key: k, decision: d, with: [], remark: rem, on: today, label: null };
+      if (e.mw && e.group) { if (!groupMw.has(where)) { groupMw.add(where); out.problems.push(where + ': this row stands for several entries, so "Match with" cannot be used on it. Type it on the Bank lines or Vouchers sheet, on the entry you mean.'); } continue; }
       if (e.mw) {
         if (d === 'Keep open') { out.problems.push(where + ': both "Keep open" and "Match with" are filled. Use one of them.'); continue; }
         const keys = parseMatch(e.mw, where); if (!keys) continue;
@@ -293,5 +296,5 @@
     return rec;
   }
 
-  return { OPTIONS, SEP, sig, isReview, isOldReview, readReview, combine, apply };
+  return { OPTIONS, SEP, GSEP, sig, isReview, isOldReview, readReview, combine, apply };
 });

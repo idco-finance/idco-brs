@@ -128,7 +128,7 @@
       ok(sum === want, HEAD[h].label.replace(/^(Add|Less): /, '') + ': items add up to the summary figure',
         items.length + ' items, ' + f(sum) + '; summary sheet ' + f(want) + (total[h] !== undefined && total[h] !== sum ? '; TOTAL row ' + f(total[h]) : '') + '.');
     }
-    out.items.forEach((it, i) => { it.no = i + 1; it.ikey = 'O|' + out.asOn + '|' + it.head + '|' + it.amt + '|' + (it.refs[0] || it.chq || it.party.slice(0, 20)) + '|' + it.dateText; });
+    out.items.forEach((it, i) => { it.no = i + 1; it.ikey = ('O|' + out.asOn + '|' + it.head + '|' + it.amt + '|' + (it.refs[0] || it.chq || it.party.slice(0, 20)) + '|' + it.dateText).replace(/\s+/g, '_'); });
     { const seen = new Map(); out.items.forEach(it => { const n = (seen.get(it.ikey) || 0) + 1; seen.set(it.ikey, n); if (n > 1) it.ikey += '|' + n; }); }
     return out;
   }

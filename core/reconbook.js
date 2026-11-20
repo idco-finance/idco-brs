@@ -10,7 +10,7 @@
     'Suspense entry': GREY, 'Cancelled receipt': GREY, 'No bank effect': GREY, 'Booked': GREEN, 'Booked in part': AMBER };
   const HOWTO = [
     '1. Open the "To review" sheet. Each row says what the tool found, what to do and where to look.',
-    '2. In the Decision column choose from the list:  Accept = the suggested match is right.  Reject = it is wrong.  Keep open = looked at; it is a genuine open item.',
+    '2. In the Decision column choose from the list:  Accept = the suggested match is right.  Reject = it is wrong.  Keep open = looked at; it is a genuine open item. The "Your choices" column says what is possible on each row. A row can stand for several entries that are one question; the decision then applies to all of them.',
     '3. If you know the other side yourself, leave Decision empty and type it in "Match with": a voucher number (CRV-123), a bank line (line 45), or several separated by commas. Two bank lines that cancel each other can be matched with each other in the same way.',
     '4. Remark is free: write anything you want kept with the item.',
     '5. Save this file. Next time, drop it on the page together with the statements, the Bank Books and the Eazypay files. The decisions are applied again and listed in the "Decisions" sheet; only what is still undecided comes back in "To review".',
@@ -67,17 +67,85 @@
   }
   const finish = ws => { writeLists(ws); ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, ws.rowCount), column: ws._n } }; };
 
-  /** The items still waiting for a person: the rows of the To review sheet. */
+  /** The items still waiting for a person: the rows of the To review sheet.
+   *  Entries that are one question for the reviewer (a partly booked Eazypay collection with its payments and
+   *  vouchers, the deposit interest credits, everything waiting on one missing file, the Re 1 test credits)
+   *  are one row; a decision on that row applies to every entry in it. */
   function pendingOf(rec) {
     const SHOW = new Set(['Suggested', 'Needs review', 'Not in books', 'Not in bank', 'Bank only']);
-    const rankOf = { 'Needs review': 0, 'Suggested': 1, 'Not in books': 2, 'Not in bank': 3, 'Bank only': 4 };
-    const pending = [];
-    rec.bankLines.filter(b => SHOW.has(b.status) && b.found && !b.reviewed).forEach(b => pending.push({ x: b, st: b.status, date: b.date, v: ['Bank', d(b.date), b.party || b.type, rs(b.amt)] }));
-    rec.vouchers.filter(v => SHOW.has(v.status) && v.found && !v.reviewed && !(v.status === 'Suggested' && v.bank.length)).forEach(v => pending.push({ x: v, st: v.status, date: v.vchDate, v: ['ERP books', d(v.vchDate), v.paidBy || v.party, rs(v.net)] }));
-    rec.payments.filter(m => m.found && !m.reviewed).forEach(m => { const st = m.status === 'Booked in part' ? 'Needs review' : 'Not in books'; pending.push({ x: m, st, date: m.settle, v: ['Eazypay', d(m.settle), (m.partyCode ? m.partyCode + ' ' : '') + m.party, rs(m.amt)] }); });
-    pending.sort((a, b) => (rankOf[a.st] - rankOf[b.st]) || a.date.localeCompare(b.date));
+    const fmt = rec.fmt, nice = rec.nice;
     const asOn = rec.brs && rec.brs.ready ? rec.brs.asOn : '';
-    return asOn ? pending.filter(p => p.date <= asOn) : pending;
+    const upto = asOn || rec.summary.lastBank || '';
+    const age = iso => (iso && upto ? Math.round((Date.parse(upto) - Date.parse(iso)) / 86400000) : null);
+    const short = (t, n) => { t = String(t || ''); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+    const list = (a, n) => a.slice(0, n).join(', ') + (a.length > n ? ' and ' + (a.length - n) + ' more' : '');
+    const KEEP = 'Keep open if it is a genuine open item, or type the voucher no. / bank line in Match with.';
+    const one = [];
+    rec.bankLines.filter(b => SHOW.has(b.status) && b.found && !b.reviewed).forEach(b => one.push({ x: b, t: 'B', st: b.status, date: b.date, from: 'Bank', who: b.party || (b.type === 'Other' ? short(b.narration, 40) : b.type), amt: b.amt, narr: b.narration }));
+    rec.vouchers.filter(v => SHOW.has(v.status) && v.found && !v.reviewed && !(v.status === 'Suggested' && v.bank.length)).forEach(v => one.push({ x: v, t: 'V', st: v.status, date: v.vchDate, from: 'ERP books', who: v.paidBy || v.party, amt: v.net, narr: '' }));
+    rec.payments.filter(m => m.found && !m.reviewed).forEach(m => one.push({ x: m, t: 'E', st: m.status === 'Booked in part' ? 'Needs review' : 'Not in books', date: m.settle, from: 'Eazypay', who: (m.partyCode ? m.partyCode + ' ' : '') + m.party, amt: m.amt, narr: '' }));
+    const live = asOn ? one.filter(p => p.date <= asOn) : one;
+
+    // which entries belong together
+    const parent = new Map(); const find = k => { while (parent.get(k) !== k) { parent.set(k, parent.get(parent.get(k))); k = parent.get(k); } return k; };
+    const join = (a, b) => { [a, b].forEach(k => { if (!parent.has(k)) parent.set(k, k); }); const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); };
+    const vByKey = new Map(rec.vouchers.map(v => [v.key, v]));
+    const bucket = new Map(); const put = (k, it) => { if (!bucket.has(k)) bucket.set(k, []); bucket.get(k).push(it); };
+    for (const it of live) {
+      const x = it.x;
+      if (it.t === 'V' && x.status === 'Needs review' && x.ez && x.ez.diff) (x.ez.trans || []).forEach(tr => join(x.ikey, 'E|' + tr));
+      else if (it.t === 'E' && x.status === 'Booked in part') x.vouchers.forEach(k => { const v = vByKey.get(k); if (v) join(x.ikey, v.ikey); });
+    }
+    const plain = (it, choices) => { const x = it.x; it.keys = [x.ikey]; it.kind = x.kind || ''; it.found = x.found; it.todo = x.todo; it.where = x.where; it.remark = x.remark || ''; it.age = age(it.t === 'V' ? (x.instruments.map(i => i.date).filter(Boolean).sort()[0] || x.vchDate) : it.date); it.choices = choices; return it; };
+    const out = [];
+    for (const it of live) {
+      const x = it.x;
+      if (parent.has(x.ikey)) put('EZ|' + find(x.ikey), it);
+      else if (x.kindCode === 'FILE_MISSING') put('FILE', it);
+      else if (it.t === 'B' && x.status === 'Bank only' && x.type === 'FD closure / interest') put('FD', it);
+      else if (x.kindCode === 'TOKEN') put('TOKEN', it);
+      else out.push(plain(it, it.st === 'Suggested' ? 'Accept if the match is right. Reject if it is not.' : it.t === 'E' ? 'Keep open until it is booked. Once a voucher carries this URN in the ERP, the tool matches it by itself.' : KEEP));
+    }
+    const ALL = n => 'Keep open (it applies to all ' + n + ' entries of this row). ';
+    for (const [k, mem] of bucket) {
+      if (mem.length === 1 && !/^EZ/.test(k)) { out.push(plain(mem[0], k === 'TOKEN' ? KEEP : 'Keep open.')); continue; }
+      mem.sort((a, b) => a.date.localeCompare(b.date));
+      const g = { x: null, members: mem, keys: mem.map(m => m.x.ikey), date: mem[0].date, remark: (mem.find(m => m.x.remark) || { x: {} }).x.remark || '', age: age(mem[0].date), narr: '' };
+      const lines = mem.filter(m => m.t === 'B').map(m => m.x.sl), sum = mem.filter(m => m.t === 'B').reduce((a, m) => a + m.amt, 0);
+      if (/^EZ/.test(k)) {
+        const vs = mem.filter(m => m.t === 'V').map(m => m.x), ps = mem.filter(m => m.t === 'E').map(m => m.x);
+        const v0 = vs[0] || vByKey.get((ps[0].vouchers || [])[0]); const ez = v0 && v0.ez && v0.ez.diff ? v0.ez : null;
+        if (!ez) { mem.forEach(it => out.push(plain(it, 'Keep open.'))); continue; }
+        const less = ez.diff < 0, ids = ez.vs, urns = ez.trans;
+        const sls = Array.from(new Set(ps.map(m => m.bankSl).filter(Boolean)));
+        Object.assign(g, { st: 'Needs review', from: 'ERP books + Eazypay', who: short(v0.paidBy || v0.party, 60), amt: Math.abs(ez.diff), kind: less ? 'Collection only partly booked' : 'Booked more than received',
+          found: urns.length + ' Eazypay payment' + (urns.length > 1 ? 's totalling ' : ' of ') + '' + fmt(ez.pay) + ' (URN ' + list(urns, 4) + ') ' + (urns.length > 1 ? 'belong' : 'belongs') + ' to voucher' + (ids.length > 1 ? 's ' : ' ') + list(ids, 6) + '. ' + (ids.length > 1 ? 'The vouchers together book ' : 'The voucher books ') + fmt(ez.net) + (less ? ', so ' + fmt(-ez.diff) + ' of the money received is not booked.' : ', which is ' + fmt(ez.diff) + ' more than was received.'),
+          todo: less ? 'Open ' + (ids.length > 1 ? 'these vouchers' : 'the voucher') + ' in the ERP and find where the remaining ' + fmt(-ez.diff) + ' should go. Often another division or wing has not yet booked its share.' : 'Open ' + (ids.length > 1 ? 'these vouchers' : 'the voucher') + ' in the ERP and check the amounts. Part of a payment may have been booked twice, or a URN may be missing from one voucher.',
+          where: 'ERP voucher' + (ids.length > 1 ? 's ' : ' ') + list(ids, 6) + ' (first dated ' + nice(v0.vchDate) + '). Bank Book file: ' + v0.file + '.' + (sls.length ? ' In the bank statement the money is inside line' + (sls.length > 1 ? 's ' : ' ') + sls.join(', ') + '.' : ''),
+          choices: (mem.length > 1 ? ALL(mem.length) : 'Keep open. ') + 'Nothing else is possible here: once it is ' + (less ? 'booked' : 'corrected') + ' in the ERP, the tool matches it by itself.' });
+      } else if (k === 'FD') {
+        Object.assign(g, { st: 'Bank only', from: 'Bank', who: 'Linked fixed deposits', amt: sum, kind: 'Interest / deposit closure credits',
+          found: 'The bank added ' + mem.length + ' credits totalling ' + fmt(sum) + ' between ' + nice(mem[0].date) + ' and ' + nice(mem[mem.length - 1].date) + ' from fixed deposits linked to this account. This is interest or closure money, put in by the bank itself. None of it is in the ERP Bank Book.',
+          todo: 'Tell the person who books bank interest. The interest and TDS figures are on the last pages of the bank statement.',
+          where: 'Bank lines sheet: filter the Type column on "FD closure / interest" (lines ' + list(lines, 8) + ').', choices: ALL(mem.length) + 'Once booked in the ERP, type the voucher no. on the Bank lines sheet.' });
+      } else if (k === 'TOKEN') {
+        Object.assign(g, { st: 'Not in books', from: 'Bank', who: short(list(mem.map(m => m.x.party).filter(Boolean), 3), 60), amt: sum, kind: 'Token / test credit of Re 1',
+          found: mem.length + ' credits of Re 1 were received; parties usually send Re 1 to test the account number before paying (' + list(mem.map(m => (m.x.party || 'party not named') + ' on ' + nice(m.date)), 6) + '). No receipt voucher was found for these.',
+          todo: 'Check in the ERP whether these have been booked. If not, they still have to be booked.',
+          where: 'Bank lines sheet, lines ' + list(lines, 10) + '.', choices: ALL(mem.length) + 'To match one of them with a voucher, use the Bank lines sheet.' });
+      } else {
+        const bm = mem.filter(m => m.t === 'B'), vm = mem.filter(m => m.t === 'V');
+        Object.assign(g, { st: 'Needs review', from: bm.length ? 'Bank + ERP books' : 'ERP books', who: 'Eazypay', amt: bm.length ? sum : vm.reduce((a, m) => a + m.amt, 0), kind: 'Cannot be checked - a file is missing',
+          found: (bm.length ? bm.length + ' Eazypay credit' + (bm.length > 1 ? 's' : '') + ' in the bank (' + list(bm.map(m => fmt(m.amt) + ' on ' + nice(m.date)), 4) + ')' : '') + (bm.length && vm.length ? ' and ' : '') + (vm.length ? vm.length + ' voucher' + (vm.length > 1 ? 's' : '') + ' received through Eazypay (' + list(vm.map(m => m.x.blockId), 8) + ')' : '') + ' could not be checked, because the Eazypay report rows for those days were not given.',
+          todo: bm.length ? 'Download from the bank the Eazypay report that covers ' + list(bm.map(m => nice(m.date)), 4) + ' and the days just before, and drop it in with the other files. Nothing is wrong with the vouchers; they will clear once the report is added.' : vm[0].x.todo,
+          where: (bm.length ? 'Bank lines sheet, line' + (lines.length > 1 ? 's ' : ' ') + list(lines, 6) + '. ' : '') + (vm.length ? 'Vouchers sheet: ' + list(vm.map(m => m.x.blockId), 8) + '.' : ''),
+          choices: 'Usually nothing to decide: add the missing report next time. Keep open only if the report cannot be had (it applies to all ' + mem.length + ' entries of this row).' });
+      }
+      out.push(g);
+    }
+    // quick confirmations first, then the largest amounts
+    out.sort((a, b) => ((a.st === 'Suggested' ? 0 : 1) - (b.st === 'Suggested' ? 0 : 1)) || (Math.abs(b.amt) - Math.abs(a.amt)) || a.date.localeCompare(b.date));
+    return out;
   }
 
   const nd = iso => (iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4) : '');
@@ -212,19 +280,37 @@
     w0.addRow(['Made by IDCO Bank Statement to Excel v' + version + ' on ' + (when || new Date()).toLocaleString('en-IN') + '. Nothing was uploaded.']).font = { italic: true, color: { argb: 'FF6B7280' } };
 
     // ---------------- To review (written for someone who is not an accountant)
-    const SEP = ' ¦ ';
+    const SEP = ' ¦ ', GSEP = ' ;; ';
     const sig = (a, b, c) => (a || b || c ? [a || '', b || '', c || ''].join(SEP).trim() : '');
     const mwText = x => (x.matchWith ? x.matchWith.map(describe).join(', ') : '');
     const hide = (ws, names) => { ws.getRow(1).eachCell((c, i) => { if (names.includes(c.value)) ws.getColumn(i).hidden = true; }); };
-    const w1 = sheet(wb, 'To review', [['No.', 6], ['Status', 15], ['Kind of item', 30], ['Found in', 10], ['Date', 12, 'd'], ['Who', 34], ['Amount', 17, 'm'], ['Days open', 8], ['What the tool found', 70], ['What to do', 62], ['Where to look', 44], ['Decision', 13], ['Match with', 22, 't'], ['Remark', 30, 't'], ['Item key', 10, 't'], ['Carried', 10, 't']]);
+    const w1 = sheet(wb, 'To review', [['No.', 6], ['Status', 14], ['Date', 12, 'd'], ['Who', 32], ['Amount', 17, 'm'], ['Decision', 13], ['Match with', 18, 't'], ['Remark', 26, 't'], ['Your choices', 44], ['Kind of item', 28], ['Found in', 11], ['Days open', 8], ['What the tool found', 70], ['What to do', 56], ['Bank narration', 44], ['Where to look', 44], ['Item key', 10, 't'], ['Carried', 10, 't']]);
+    w1.views = [{ state: 'frozen', xSplit: 5, ySplit: 1 }];
     pending.forEach((it, i) => {
-      const x = it.x;
-      const r = add(w1, [i + 1, it.st, x.kind || ''].concat(it.v, [x.age, x.found, x.todo, x.where, '', '', x.remark || '', x.ikey, sig('', '', x.remark)]), it.st);
-      [3, 6, 9, 10, 11, 14].forEach(c => { r.getCell(c).alignment = { wrapText: true, vertical: 'top' }; });
-      [1, 2, 4, 5, 7, 8, 12, 13].forEach(c => { r.getCell(c).alignment = Object.assign({}, r.getCell(c).alignment, { vertical: 'top' }); });
-      pick(r.getCell(12), it.st === 'Suggested' ? '"Accept,Reject"' : '"Keep open"'); input(r.getCell(13)); input(r.getCell(14));
+      const r = add(w1, [i + 1, it.st, d(it.date), it.who, rs(it.amt), '', '', it.remark || '', it.choices, it.kind || '', it.from, it.age, it.found, it.todo, it.narr || '', it.where, it.keys.join(GSEP), sig('', '', it.remark)], it.st);
+      [4, 8, 9, 10, 11, 13, 14, 15, 16].forEach(c => { r.getCell(c).alignment = { wrapText: true, vertical: 'top' }; });
+      [1, 2, 3, 5, 6, 7, 12].forEach(c => { r.getCell(c).alignment = Object.assign({}, r.getCell(c).alignment, { vertical: 'top' }); });
+      pick(r.getCell(6), it.st === 'Suggested' ? '"Accept,Reject"' : '"Keep open"'); input(r.getCell(7)); input(r.getCell(8));
     });
     hide(w1, ['Item key', 'Carried']); finish(w1);
+
+    // ---------------- To be booked: Eazypay money the bank has credited and no voucher carries, party by party
+    {
+      const lim = R0 ? R0.asOn : '';
+      const un = rec.payments.filter(m => m.bankSl && m.status === 'Not in books' && (!lim || (m.bankDate || m.settle) <= lim));
+      if (un.length) {
+        const by = new Map(); un.forEach(m => { const k = (m.partyCode || '') + '|' + m.party; if (!by.has(k)) by.set(k, []); by.get(k).push(m); });
+        const wq = sheet(wb, 'To be booked', [['Party code', 11], ['Party', 46], ['Payments', 9], ['Amount', 18, 'm'], ['First credited', 13, 'd'], ['Last credited', 13, 'd'], ['Eazypay URN(s)', 90, 't']]);
+        Array.from(by.values()).map(a => ({ a, t: a.reduce((x, m) => x + m.amt, 0) })).sort((p, q) => q.t - p.t).forEach(({ a, t }) => {
+          const ds = a.map(m => m.bankDate || m.settle).sort();
+          const r = wq.addRow([a[0].partyCode || '', a[0].party, a.length, rs(t), d(ds[0]), d(ds[ds.length - 1]), a.map(m => m.tran).join(', ')]); r.getCell(7).alignment = { wrapText: true, vertical: 'top' }; r.getCell(2).alignment = { wrapText: true, vertical: 'top' };
+        });
+        const n = wq.rowCount;
+        const tr = wq.addRow(['', 'Total', { formula: 'SUM(C2:C' + n + ')', result: un.length }, { formula: 'SUM(D2:D' + n + ')', result: rs(un.reduce((x, m) => x + m.amt, 0)) }]); tr.font = { bold: true }; tr.getCell(4).numFmt = MONEY;
+        finish(wq);
+      }
+    }
+
 
     // ---------------- Bank lines
     const w2 = sheet(wb, 'Bank lines', [['Line', 7], ['Date', 12, 'd'], ['Narration', 62], ['Type', 20], ['Withdrawal', 18, 'm'], ['Deposit', 18, 'm'], ['Status', 16], ['Kind of item', 30], ['How it was matched', 46], ['Voucher(s)', 26], ['Paid by (Eazypay credits)', 44], ['Days from bank date to voucher', 12], ['Note', 80], ['Page', 7], ['Statement file', 28], ['Decision', 13], ['Match with', 22, 't'], ['Remark', 30, 't'], ['Item key', 10, 't'], ['Linked keys', 10, 't'], ['Carried', 10, 't']]);

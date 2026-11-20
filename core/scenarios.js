@@ -166,6 +166,7 @@
     }
     for (const m of rec.payments) { set(m, m.bankSl === null || m.status === 'Booked' ? '' : (m.status === 'Booked in part' ? 'PART_BOOKED' : 'EZY_UNBOOKED')); m.age = m.kindCode && lastBank && m.bankDate ? days(lastBank, m.bankDate) : null; }
 
+    for (const b of B) if (b.kindCode === 'CONTRA' && b.todo && !/other IDCO account/.test(b.todo)) b.todo += ' The narration points to another IDCO account: check the books of that account for the other side of this transfer.';
     const openB = B.filter(b => b.status === 'Not in books' && !b.reviewed), openV = V.filter(v => v.status === 'Not in bank' && !v.reviewed);
     const hint = (x, code, found, todo) => { set(x, code); x.found = found; x.todo = todo; x.hinted = true; };
     const lineOf = b => 'line ' + b.sl;
