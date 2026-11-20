@@ -161,9 +161,11 @@
     const join = (a, b) => { add(a); add(b); const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); };
     const vByKey = new Map(V.map(v => [v.key, v]));
     B.forEach(add); V.forEach(add); P.forEach(add); O.forEach(add);
-    V.forEach(v => { v.bank.forEach(sl => join(v, B[sl - 1])); (v.setOff || []).forEach(x => join(v, x)); (v.openLinks || []).forEach(o => join(v, o)); });
-    B.forEach(b => { (b.setOff || []).forEach(x => join(b, x)); (b.openLinks || []).forEach(o => join(b, o)); });
-    P.forEach(m => { if (m.bankSl) join(m, B[m.bankSl - 1]); m.vouchers.forEach(k => { const v = vByKey.get(k); if (v) join(m, v); }); });
+    // a match only counts once it is confirmed: a pair the tool merely suggests stays open on both sides until accepted
+    const sure = (x, y) => x.status !== 'Suggested' && y.status !== 'Suggested';
+    V.forEach(v => { v.bank.forEach(sl => { if (sure(v, B[sl - 1])) join(v, B[sl - 1]); }); (v.setOff || []).forEach(x => join(v, x)); (v.openLinks || []).forEach(o => { if (sure(v, o)) join(v, o); }); });
+    B.forEach(b => { (b.setOff || []).forEach(x => join(b, x)); (b.openLinks || []).forEach(o => { if (sure(b, o)) join(b, o); }); });
+    P.forEach(m => { if (m.bankSl && B[m.bankSl - 1].status !== 'Suggested') join(m, B[m.bankSl - 1]); m.vouchers.forEach(k => { const v = vByKey.get(k); if (v) join(m, v); }); });
     // receipts whose money came in before 1 April (booked this year) and reversals of a suspense entry of an earlier year:
     // book entries with no bank entry of their own this year. They are shown together, as one net line with a schedule.
     const ids = new Set(V.map(v => v.blockId));
@@ -199,7 +201,7 @@
       const bookPart = vIn.reduce((a, v) => a + v.net, 0) + oIn.filter(o => OP_EFFECT[o.head][0] === 'book').reduce((a, o) => a + OP_EFFECT[o.head][1] * o.amt, 0);
       const diff = bankPart - bookPart;
       const anyBank = bIn.length || oIn.some(o => OP_EFFECT[o.head][0] === 'bank'), anyBook = vIn.length || oIn.some(o => OP_EFFECT[o.head][0] === 'book');
-      if (diff === 0 && (anyBank || anyBook)) { oIn.forEach(o => clearedO.add(o)); if (g.some(x => x.status === 'Suggested' && (isB(x) ? inB(x) : isV(x) ? inV(x) : isO(x)))) suggested++; continue; }
+      if (diff === 0 && (anyBank || anyBook)) { oIn.forEach(o => clearedO.add(o)); continue; }
       if (!anyBank && !anyBook) continue;
       if (!anyBook) { bIn.forEach(b => pushB(b, g)); oIn.forEach(o => pushO(o, g)); continue; }
       if (!anyBank) { vIn.forEach(v => pushV(v, g)); oIn.forEach(o => pushO(o, g)); continue; }
@@ -221,6 +223,7 @@
       }
     }
     items.forEach(it => { it.age = days(asOn, it.date || asOn); });
+    suggested = items.filter(it => it.status === 'Suggested').length;
     items.sort((a, b) => ORDER.indexOf(a.head) - ORDER.indexOf(b.head) || String(a.date).localeCompare(String(b.date)) || b.amt - a.amt);
     items.forEach((it, i) => { it.no = i + 1; });
 

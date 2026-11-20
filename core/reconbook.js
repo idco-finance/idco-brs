@@ -181,7 +181,7 @@
       for (const [lab, cnt, amt] of parts[k]) { const q = ws.addRow(['     ' + lab, rs(amt), cnt + ' item' + (cnt > 1 ? 's' : '') + (/sweep/.test(lab) ? ' (Bank lines sheet, Status = Sweep)' : ' (BRS items sheet)')]); q.getCell(2).numFmt = MONEY; q.getCell(1).alignment = { wrapText: true }; }
     }
     ws.addRow([]);
-    const notes = ['Prepared by the tool from the files given. ' + (R.suggested ? R.suggested + ' match(es) are only suggested by the tool and are counted as settled until someone rejects them. ' : '') + 'The open items are listed in the sheet "BRS items"; check them before signing.',
+    const notes = ['Prepared by the tool from the files given. ' + (R.suggested ? R.suggested + ' item(s) are open only because the match the tool suggests for them is not yet confirmed; once accepted in To review, they drop out. ' : '') + 'The open items are listed in the sheet "BRS items"; check them before signing.',
       'The four headings are those of the IDCO BRS. The tool\'s other lines (differences in matched entries, book entries with no bank entry this year, sweeps) have no heading of their own in that format, so each is put under the heading of the same sign, as shown above. Move them if the accounts section shows them differently.'];
     for (const tx of notes) { const r = ws.addRow([tx]); ws.mergeCells(r.number, 1, r.number, 3); r.getCell(1).alignment = { wrapText: true, vertical: 'top' }; r.height = 44; }
     ws.pageSetup = { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
@@ -221,7 +221,7 @@
     const notes = [
       'Prepared by the tool from the bank statements, the ERP Bank Book and the last signed BRS. It lists and adds up; it does not decide. Check the items before signing.',
       'An item counts as settled only if both sides are dated on or before ' + nd(R.asOn) + '. Items settled later still appear here; the column "Settled after ' + nd(R.asOn) + '" in "BRS items" says when and how.',
-      R.suggested ? R.suggested + ' match(es) used in this BRS are only suggested by the tool. They are in the "To review" sheet: accept or reject them, and the BRS is worked out again next time.' : 'Every match used in this BRS is confirmed (no suggested matches).',
+      R.suggested ? R.suggested + ' item(s) are listed as open only because the match the tool suggests for them is not yet confirmed. Accept the right matches in the "To review" sheet and those items drop out next time. The BRS never counts a match nobody has confirmed.' : 'Every match used in this BRS is confirmed (no suggested matches).',
       'Last signed BRS (' + nd(R.opening.asOn) + '): ' + R.opening.n + ' items; ' + R.opening.cleared + ' settled by ' + nd(R.asOn) + ', ' + R.opening.stillOpen + ' still open. See the sheet "Last BRS".'
     ];
     if (R.bookNet) notes.push('Receipts booked this year for money that came into the bank before 1 April, and reversals of suspense entries of the earlier year, have no bank entry this year. They are shown as one net line (' + fmt(Math.abs(R.bookNet.net)) + '); the vouchers are in the sheet "BRS book entries". Compare them with the suspense details of the earlier year.');

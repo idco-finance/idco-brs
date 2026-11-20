@@ -310,7 +310,7 @@
     row('Difference', R.diff, R.diff === 0 ? 'tot good' : 'tot bad');
     wrap.appendChild(tbl);
     const notes = [];
-    if (R.suggested) notes.push(R.suggested + ' match(es) in this BRS are only suggested by the tool: confirm them in the To review sheet.');
+    if (R.suggested) notes.push(R.suggested + ' open item(s) have a match suggested by the tool. They stay open until accepted in the To review sheet.');
     notes.push('Last signed BRS: ' + R.opening.n + ' items, ' + R.opening.cleared + ' settled by ' + nice(R.asOn) + ', ' + R.opening.stillOpen + ' still open.');
     R.checks.filter(c => !c.pass).forEach(c => notes.push('CHECK - ' + c.what + ': ' + c.detail));
     const ul = el('ul'); notes.forEach(t => ul.appendChild(el('li', '', t))); const nb = el('div', R.checks.some(c => !c.pass) ? 'look' : 'fine'); nb.appendChild(ul); wrap.appendChild(nb);
