@@ -70,6 +70,7 @@
     ['COMBINED', 'Match to confirm - several entries add up', NONE, 'One entry on one side equals several entries on the other.', true],
     ['SAME_AMOUNT', 'Match to confirm - same amount paid several times', NONE, 'Several payments of the same amount lie close together; paired in date order.', true],
     ['NO_DATE', 'Match to confirm - voucher shows no payment date', NONE, 'Matched on the amount alone.', true],
+    ['PAISE', 'Match to confirm - amounts differ only in paise', NONE, 'Same party and date; bank and voucher are less than Re 1 apart. Once accepted, the paise show as a difference in matched entries.', true],
     ['DATE_SHIFT', 'Match to confirm - Eazypay date one day away', NONE, 'The settlement credit equals the Eazypay total of the neighbouring day.', true],
     ['MANY_FIT', 'More than one voucher fits', DECIDE, 'Several vouchers have this amount and date; a person has to pick.', true],
     ['FILE_MISSING', 'Cannot be checked - a file is missing', DECIDE, 'The Eazypay report or the bank statement that covers this item was not given.', true],
@@ -93,6 +94,7 @@
     if (b.code === 'EZY_NOFILE' || b.code === 'EZY_PARTFILE') return 'FILE_MISSING';
     if (b.status === 'Suggested') {
       if (b.ezyShift) return 'DATE_SHIFT';
+      if (/paise apart/.test(b.how)) return 'PAISE';
       if (/^UTR/.test(b.how)) return 'AMOUNT_DIFFERS';
       if (b.how === 'Amount and date') return 'NAME_DIFFERS';
       if (b.how === 'Amount only') return 'NO_DATE';

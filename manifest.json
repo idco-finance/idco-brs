@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "IDCO Bank Statement to Excel",
   "short_name": "Statement to Excel",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "description": "Turns bank statement PDFs into a clean Excel sheet, with every line proved against the running balance, and matches it with the ERP Bank Book. Works on this computer only; nothing is uploaded.",
   "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
   "action": { "default_title": "Open Bank Statement to Excel" },

@@ -9,7 +9,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '1.4.3';
+  const VERSION = '1.4.4';
   const TEAL = 'FF0F766E', PAPER = 'FFF7F3EA', INK = 'FF1F2937', GREEN = 'FFD1FAE5', RED = 'FFFEE2E2', AMBER = 'FFFEF3C7', GREY = 'FFE5E7EB';
   const MONEY = '#,##0.00;[Red]-#,##0.00';
 
