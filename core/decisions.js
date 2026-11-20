@@ -87,6 +87,18 @@
         else if (ks.length > 1) bad = bad || 'voucher number ' + tok + ' occurs ' + ks.length + ' times (different dates), so it is not clear which one is meant';
         else keys.push(ks[0]);
       }
+      if (bad) {                       // free wording, e.g. "346 BANK LINES CRV-933" or "bank line 346 with CRV-933"
+        const t = String(text).toUpperCase(), k2 = [];
+        const vRe = /\b(?:CRV|DRV|JV|BPV|BRV|CPV|CRV-PROV|DRV-PROV)\s*-\s*(?:PROV)?\d+(?:\/\d+)?\b/g;
+        const ids = (t.match(vRe) || []).map(x => x.replace(/\s/g, ''));
+        let rest = t.replace(vRe, ' ');
+        const lines = (rest.match(/\b\d{1,6}\b/g) || []);
+        rest = rest.replace(/\b\d{1,6}\b/g, ' ').replace(/\b(BANK|LINES?|L|SL|NO|AND|WITH|MATCH(ED)?|TO|IN|OF|THE|STATEMENT)\b/g, ' ').replace(/[\s.,;:&+()\/-]+/g, '');
+        let ok = !rest && (ids.length + lines.length) > 0;
+        for (const id of ids) { const ks = vchKey.get(id); if (!ks || ks.length > 1) ok = false; else k2.push(ks[0]); }
+        for (const n of lines) { const k = lineKey.get(String(+n)); if (!k) ok = false; else k2.push(k); }
+        if (ok) return Array.from(new Set(k2));
+      }
       if (bad) out.problems.push(where + ': "Match with" could not be understood - ' + bad + '.');
       return bad ? null : Array.from(new Set(keys));
     }
