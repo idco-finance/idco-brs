@@ -310,10 +310,11 @@
     row('Difference', R.diff, R.diff === 0 ? 'tot good' : 'tot bad');
     wrap.appendChild(tbl);
     const notes = [];
+    if (!R.tried) notes.push('NOT YET TRIED ON THIS ACCOUNT: the tool has so far been checked only on ' + R.triedList + '. Check every figure before relying on it.');
     if (R.suggested) notes.push(R.suggested + ' open item(s) have a match suggested by the tool. They stay open until accepted in the To review sheet.');
     notes.push('Last signed BRS: ' + R.opening.n + ' items, ' + R.opening.cleared + ' settled by ' + nice(R.asOn) + ', ' + R.opening.stillOpen + ' still open.');
     R.checks.filter(c => !c.pass).forEach(c => notes.push('CHECK - ' + c.what + ': ' + c.detail));
-    const ul = el('ul'); notes.forEach(t => ul.appendChild(el('li', '', t))); const nb = el('div', R.checks.some(c => !c.pass) ? 'look' : 'fine'); nb.appendChild(ul); wrap.appendChild(nb);
+    const ul = el('ul'); notes.forEach(t => ul.appendChild(el('li', '', t))); const nb = el('div', R.checks.some(c => !c.pass) || !R.tried ? 'look' : 'fine'); nb.appendChild(ul); wrap.appendChild(nb);
     return wrap;
   }
 

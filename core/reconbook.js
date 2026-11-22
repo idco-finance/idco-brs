@@ -13,6 +13,7 @@
     '2. In the Decision column choose from the list:  Accept = the suggested match is right.  Reject = it is wrong.  Keep open = looked at; it is a genuine open item. The "Your choices" column says what is possible on each row. A row can stand for several entries that are one question; the decision then applies to all of them.',
     '3. If you know the other side yourself, leave Decision empty and type it in "Match with": a voucher number (CRV-123), a bank line (line 45), or several separated by commas. Two bank lines that cancel each other can be matched with each other in the same way.',
     '4. Remark is free: write anything you want kept with the item.',
+    'Items you keep open move to the sheet "Kept open (follow up)", which keeps what to do and where to look until they are settled.',
     '5. Save this file. Next time, drop it on the page together with the statements, the Bank Books and the Eazypay files. The decisions are applied again and listed in the "Decisions" sheet; only what is still undecided comes back in "To review".',
     '6. To take a decision back, choose Undo in the "Decisions" sheet (or clear the Decision on the Bank lines / Vouchers sheet), save, and drop the file in again.',
     'The tool applies what you decide and nothing more. It never books, changes or deletes anything in the ERP or at the bank.'
@@ -71,7 +72,8 @@
    *  Entries that are one question for the reviewer (a partly booked Eazypay collection with its payments and
    *  vouchers, the deposit interest credits, everything waiting on one missing file, the Re 1 test credits)
    *  are one row; a decision on that row applies to every entry in it. */
-  function pendingOf(rec) {
+  function pendingOf(rec, kept) {
+    const want = x => !!x.reviewed === !!kept;
     const SHOW = new Set(['Suggested', 'Needs review', 'Not in books', 'Not in bank', 'Bank only']);
     const fmt = rec.fmt, nice = rec.nice;
     const asOn = rec.brs && rec.brs.ready ? rec.brs.asOn : '';
@@ -81,9 +83,9 @@
     const list = (a, n) => a.slice(0, n).join(', ') + (a.length > n ? ' and ' + (a.length - n) + ' more' : '');
     const KEEP = 'Keep open if it is a genuine open item, or type the voucher no. / bank line in Match with.';
     const one = [];
-    rec.bankLines.filter(b => SHOW.has(b.status) && b.found && !b.reviewed).forEach(b => one.push({ x: b, t: 'B', st: b.status, date: b.date, from: 'Bank', who: b.party || (b.type === 'Other' ? short(b.narration, 40) : b.type), amt: b.amt, narr: b.narration }));
-    rec.vouchers.filter(v => SHOW.has(v.status) && v.found && !v.reviewed && !(v.status === 'Suggested' && v.bank.length)).forEach(v => one.push({ x: v, t: 'V', st: v.status, date: v.vchDate, from: 'ERP books', who: v.paidBy || v.party, amt: v.net, narr: '' }));
-    rec.payments.filter(m => m.found && !m.reviewed).forEach(m => one.push({ x: m, t: 'E', st: m.status === 'Booked in part' ? 'Needs review' : 'Not in books', date: m.settle, from: 'Eazypay', who: (m.partyCode ? m.partyCode + ' ' : '') + m.party, amt: m.amt, narr: '' }));
+    rec.bankLines.filter(b => SHOW.has(b.status) && b.found && want(b)).forEach(b => one.push({ x: b, t: 'B', st: b.status, date: b.date, from: 'Bank', who: b.party || (b.type === 'Other' ? short(b.narration, 40) : b.type), amt: b.amt, narr: b.narration }));
+    rec.vouchers.filter(v => SHOW.has(v.status) && v.found && want(v) && !(v.status === 'Suggested' && v.bank.length)).forEach(v => one.push({ x: v, t: 'V', st: v.status, date: v.vchDate, from: 'ERP books', who: v.paidBy || v.party, amt: v.net, narr: '' }));
+    rec.payments.filter(m => m.found && want(m)).forEach(m => one.push({ x: m, t: 'E', st: m.status === 'Booked in part' ? 'Needs review' : 'Not in books', date: m.settle, from: 'Eazypay', who: (m.partyCode ? m.partyCode + ' ' : '') + m.party, amt: m.amt, narr: '' }));
     const live = asOn ? one.filter(p => p.date <= asOn) : one;
 
     // which entries belong together
@@ -181,8 +183,8 @@
       for (const [lab, cnt, amt] of parts[k]) { const q = ws.addRow(['     ' + lab, rs(amt), cnt + ' item' + (cnt > 1 ? 's' : '') + (/sweep/.test(lab) ? ' (Bank lines sheet, Status = Sweep)' : ' (BRS items sheet)')]); q.getCell(2).numFmt = MONEY; q.getCell(1).alignment = { wrapText: true }; }
     }
     ws.addRow([]);
-    const notes = ['Prepared by the tool from the files given. ' + (R.suggested ? R.suggested + ' item(s) are open only because the match the tool suggests for them is not yet confirmed; once accepted in To review, they drop out. ' : '') + 'The open items are listed in the sheet "BRS items"; check them before signing.',
-      'The four headings are those of the IDCO BRS. The tool\'s other lines (differences in matched entries, book entries with no bank entry this year, sweeps) have no heading of their own in that format, so each is put under the heading of the same sign, as shown above. Move them if the accounts section shows them differently.'];
+    const notes = (R.tried ? [] : ['NOT YET TRIED ON THIS ACCOUNT: the tool has so far been checked only on ' + R.triedList + '. Check every figure of this BRS before relying on it.']).concat(['Prepared by the tool from the files given. ' + (R.suggested ? R.suggested + ' item(s) are open only because the match the tool suggests for them is not yet confirmed; once accepted in To review, they drop out. ' : '') + 'The open items are listed in the sheet "BRS items"; check them before signing.',
+      'The four headings are those of the IDCO BRS. The tool\'s other lines (differences in matched entries, book entries with no bank entry this year, sweeps) have no heading of their own in that format, so each is put under the heading of the same sign, as shown above. Move them if the accounts section shows them differently.']);
     for (const tx of notes) { const r = ws.addRow([tx]); ws.mergeCells(r.number, 1, r.number, 3); r.getCell(1).alignment = { wrapText: true, vertical: 'top' }; r.height = 44; }
     ws.pageSetup = { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
   }
@@ -218,12 +220,12 @@
     ws.addRow([]);
     const sec = t => { const r = ws.addRow([t]); r.font = { bold: true, color: { argb: 'FFFFFFFF' } }; [1, 2, 3, 4].forEach(c => { r.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: TEAL } }; }); };
     sec('Read this first');
-    const notes = [
+    const notes = (R.tried ? [] : ['NOT YET TRIED ON THIS ACCOUNT: the tool has so far been checked only on ' + R.triedList + '. Check every figure of this BRS before relying on it.']).concat([
       'Prepared by the tool from the bank statements, the ERP Bank Book and the last signed BRS. It lists and adds up; it does not decide. Check the items before signing.',
       'An item counts as settled only if both sides are dated on or before ' + nd(R.asOn) + '. Items settled later still appear here; the column "Settled after ' + nd(R.asOn) + '" in "BRS items" says when and how.',
       R.suggested ? R.suggested + ' item(s) are listed as open only because the match the tool suggests for them is not yet confirmed. Accept the right matches in the "To review" sheet and those items drop out next time. The BRS never counts a match nobody has confirmed.' : 'Every match used in this BRS is confirmed (no suggested matches).',
       'Last signed BRS (' + nd(R.opening.asOn) + '): ' + R.opening.n + ' items; ' + R.opening.cleared + ' settled by ' + nd(R.asOn) + ', ' + R.opening.stillOpen + ' still open. See the sheet "Last BRS".'
-    ];
+    ]);
     if (R.bookNet) notes.push('Receipts booked this year for money that came into the bank before 1 April, and reversals of suspense entries of the earlier year, have no bank entry this year. They are shown as one net line (' + fmt(Math.abs(R.bookNet.net)) + '); the vouchers are in the sheet "BRS book entries". Compare them with the suspense details of the earlier year.');
     for (const t of notes) { const r = ws.addRow([t]); ws.mergeCells(r.number, 1, r.number, 4); r.getCell(1).alignment = { wrapText: true, vertical: 'top' }; r.height = t.length > 120 ? 32 : 18; }
     ws.addRow([]); sec('Checks');
@@ -233,8 +235,9 @@
 
   function brsSchedules(wb, rec, R, h) {
     const nice = rec.nice;
-    const w = sheet(wb, 'BRS items', [['No.', 6], ['Heading', 46], ['Date', 12, 'd'], ['Who', 34], ['Reference', 26, 't'], ['Amount', 18, 'm'], ['Particulars', 70], ['From', 22], ['Kind of item', 30], ['Days open', 9], ['Settled after ' + nd(R.asOn), 44], ['Status in matching', 16], ['Heading in the IDCO format', 40]]);
-    R.items.forEach(it => { const r = add(w, [it.no, R.heads[it.head], d(it.date), it.who, it.ref, rs(it.amt), it.what, it.source, it.kind, it.age, it.later, it.status, IDCO_LABEL[IDCO[it.head]]], it.later ? 'Matched' : (it.status === 'Suggested' ? 'Suggested' : 'Not in books')); [2, 4, 7, 11].forEach(c => { r.getCell(c).alignment = { wrapText: true, vertical: 'top' }; }); });
+    const w = sheet(wb, 'BRS items', [['No.', 6], ['Heading', 46], ['Date', 12, 'd'], ['Who', 34], ['Reference', 26, 't'], ['Amount', 18, 'm'], ['Particulars', 70], ['From', 22], ['Kind of item', 30], ['Days open', 9], ['Settled after ' + nd(R.asOn), 44], ['Status in matching', 16], ['Heading in the IDCO format', 40], ['Reviewed', 11], ['Remark', 30], ['What to do', 56], ['Where to look', 44]]);
+    const byKey = new Map(); rec.bankLines.forEach(b => byKey.set(b.ikey || b.key, b)); rec.vouchers.forEach(v => byKey.set(v.ikey, v)); rec.payments.forEach(m => byKey.set(m.ikey, m)); (rec.opening || []).forEach(o => byKey.set(o.ikey, o));
+    R.items.forEach(it => { const r = add(w, [it.no, R.heads[it.head], d(it.date), it.who, it.ref, rs(it.amt), it.what, it.source, it.kind, it.age, it.later, it.status, IDCO_LABEL[IDCO[it.head]], (g => g.reviewed || '')(it.keys.length === 1 && byKey.get(it.keys[0]) || {}), (g => g.remark || '')(it.keys.length === 1 && byKey.get(it.keys[0]) || {}), (g => g.todo || '')(it.keys.length === 1 && byKey.get(it.keys[0]) || {}), (g => g.where || '')(it.keys.length === 1 && byKey.get(it.keys[0]) || {})], it.later ? 'Matched' : (it.status === 'Suggested' ? 'Suggested' : 'Not in books')); [2, 4, 7, 11, 15, 16, 17].forEach(c => { r.getCell(c).alignment = { wrapText: true, vertical: 'top' }; }); });
     finish(w);
     if (R.bookNet) {
       const wb2 = sheet(wb, 'BRS book entries', [['Kind', 30], ['Date', 12, 'd'], ['Voucher', 14], ['Who', 34], ['Amount (+ receipt, - payment)', 20, 'm'], ['Instrument date', 13, 'd'], ['Narration', 90]]);
@@ -331,6 +334,21 @@
       pick(r.getCell(6), it.st === 'Suggested' ? '"Accept,Reject"' : '"Keep open"'); input(r.getCell(7)); input(r.getCell(8));
     });
     hide(w1, ['Item key', 'Carried']); finish(w1);
+
+    // ---------------- Kept open (follow up): decided as genuinely open, still open, with the guidance kept in view
+    {
+      const kept = pendingOf(rec, true);
+      const when = new Map((rec.decisions || []).filter(x => x.decision === 'Keep open').map(x => [x.key, x.on || '']));
+      const wk = sheet(wb, 'Kept open (follow up)', [['No.', 6], ['Date', 12, 'd'], ['Who', 32], ['Amount', 17, 'm'], ['Days open', 8], ['Remark', 30], ['Kept open on', 12, 't'], ['Kind of item', 28], ['Found in', 11], ['What the tool found', 70], ['What to do', 56], ['Bank narration', 44], ['Where to look', 44]]);
+      wk.views = [{ state: 'frozen', xSplit: 4, ySplit: 1 }];
+      kept.forEach((it, i) => {
+        const r = add(wk, [i + 1, d(it.date), it.who, rs(it.amt), it.age, it.remark || '', when.get(it.keys[0]) || '', it.kind || '', it.from, it.found, it.todo, it.narr || '', it.where], it.st);
+        [3, 6, 8, 10, 11, 12, 13].forEach(c => { r.getCell(c).alignment = { wrapText: true, vertical: 'top' }; });
+        [1, 2, 4, 5, 7, 9].forEach(c => { r.getCell(c).alignment = Object.assign({}, r.getCell(c).alignment, { vertical: 'top' }); });
+      });
+      if (!kept.length) wk.addRow(['', null, 'Nothing has been kept open yet. Items you mark Keep open in To review are listed here, with what to do and where to look, until they are settled.']);
+      finish(wk);
+    }
 
     // ---------------- To be booked: Eazypay money the bank has credited and no voucher carries, party by party
     {

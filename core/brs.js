@@ -18,6 +18,9 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
+  // accounts on which the BRS has been tried with real files and reviewed by the accounts team
+  // (recognised by bank and account name, so that no account number is kept in the code)
+  const TRIED = [{ bank: /ICICI/i, name: /COLLECTION/i, label: 'the ICICI Bank Collection account' }];
   const DAY = 86400000;
   const t = iso => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10));
   const days = (a, b) => Math.round((t(a) - t(b)) / DAY);
@@ -147,13 +150,24 @@
     ok(!acc.gap && acc.pass, 'Bank statements are complete and proved', acc.pass ? 'Every line agrees with the running balance; no month is missing.' : 'The statement check is CHECK; see the statement Excel.');
     const lastBook = rec.summary.lastBookFile || rec.summary.lastBook || '';
     ok(lastBook >= asOn, 'Bank Book reaches ' + nice(asOn), 'The Bank Book files given end on ' + nice(lastBook || '-') + '.');
+    // the Bank Book must be complete: from 1 April, no month missing, every file agreeing with the ERP's own totals
+    const bf = rec.summary.bookFiles || [];
+    const bookFrom = bf.map(f => f.from).filter(Boolean).sort()[0] || '';
+    const bookStart = !!bookFrom && bookFrom <= fy;
+    ok(bookStart, 'Bank Book starts on ' + nice(fy), bookFrom ? 'The Bank Book files given start on ' + nice(bookFrom) + '. Download the Bank Book from ' + nice(fy) + ', or the book balance and the open items will be wrong.' : 'The period of the Bank Book files could not be read.');
+    const have = new Set(); bf.forEach(f => { if (!f.from || !f.to) return; for (let d = f.from.slice(0, 7); d <= f.to.slice(0, 7);) { have.add(d); const y = +d.slice(0, 4), m = +d.slice(5, 7); d = m === 12 ? (y + 1) + '-01' : y + '-' + String(m + 1).padStart(2, '0'); } });
+    const gaps = []; for (let d = fy.slice(0, 7); d <= asOn.slice(0, 7);) { if (!have.has(d)) gaps.push(d); const y = +d.slice(0, 4), m = +d.slice(5, 7); d = m === 12 ? (y + 1) + '-01' : y + '-' + String(m + 1).padStart(2, '0'); }
+    ok(!gaps.length, 'Bank Book covers every month up to ' + nice(asOn), gaps.length ? 'No Bank Book file covers ' + gaps.map(g => g.slice(5, 7) + '-' + g.slice(0, 4)).join(', ') + '.' : 'Every month is covered.');
+    const notTied = bf.filter(f => !/EXACT\s*MATCH/i.test(f.tie || ''));
+    ok(!notTied.length, 'Every Bank Book file agrees with the ERP\'s own totals', notTied.length ? notTied.map(f => f.fileName + ' (its Control sheet says ' + (f.tie || 'nothing') + ')').join('; ') + '. Download it again with the latest Bank Book Linearizer: some vouchers are missing from it.' : 'The Control sheet of every Bank Book file says EXACT MATCH.');
+    const bookBad = !bookStart || gaps.length > 0 || notTied.length > 0;
     ok(!!op, 'Last signed BRS given', op ? 'BRS as on ' + nice(op.asOn) + ' (' + op.fileName + ', sheet "' + op.sheet + '").' : 'Drop the last signed BRS workbook (for example the 31.03.2026 BRS) so that the opening items and the book balance are known.');
     if (op) {
       ok(op.asOn === new Date(t(fy) - DAY).toISOString().slice(0, 10), 'The last BRS is as on the day before the year starts', 'It is as on ' + nice(op.asOn) + '.');
       ok(op.bank === acc.opening, 'Bank balance in the last BRS = opening balance of the statement', 'Last BRS ' + fmt(op.bank) + ', statement opening on ' + nice(stFrom) + ' ' + fmt(acc.opening) + '.');
       op.checks.forEach(c => checks.push(c));
     }
-    if (checks.some(c => !c.pass) && (!op || stFrom > fy || stTo < asOn)) return { asOn, fy, checks, ready: false };
+    if (checks.some(c => !c.pass) && (!op || stFrom > fy || stTo < asOn || bookBad)) return { asOn, fy, checks, ready: false };
 
     // groups
     const parent = new Map(); const find = x => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
@@ -237,8 +251,8 @@
     return { asOn, fy, ready: true, checks, items, totals, sweep, sweepN, book, bookOpen: op.book, bookMove, bank: bankBal, computed, diff: bankBal - computed, suggested, bookNet,
       openingCleared: Array.from(clearedO).map(o => o.ikey),
       opening: { asOn: op.asOn, n: O.length, cleared: clearedO.size, stillOpen: O.length - clearedO.size, file: op.fileName, sheet: op.sheet, gl: op.gl, name: op.name }, heads: HEADS, order: ORDER, sign: SIGN,
-      account: acc.account, bankName: acc.bank };
+      account: acc.account, bankName: acc.bank, tried: TRIED.some(t => t.bank.test(acc.bank || '') && t.name.test(op.name || '')), triedList: TRIED.map(t => t.label).join(', ') };
   }
 
-  return { HEADS, ORDER, SIGN, months, matchOpening, build, monthEnd, fyStartOf };
+  return { TRIED, HEADS, ORDER, SIGN, months, matchOpening, build, monthEnd, fyStartOf };
 });

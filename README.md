@@ -12,6 +12,12 @@ Use it in Chrome or Microsoft Edge. Nothing to install.
 3. Lets the person doing the BRS decide each open item in Excel (Accept, Reject, Keep open, Match with),
    and applies those decisions again the next time.
 
+4. Prepares the Bank Reconciliation Statement as on any month-end from 1 April, also in IDCO's own
+   four-heading format, from the last signed BRS, the statements and the Bank Book.
+
+**Accounts tried so far:** the ICICI Bank Collection account. On any other account the tool shows a
+"not yet tried on this account" notice; check every figure before relying on it.
+
 ## Your files stay on your computer
 
 The page runs entirely inside your browser. Statements, Bank Books and Eazypay files are read on your own
