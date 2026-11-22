@@ -256,7 +256,9 @@
     const amtsSeen = new Set(debits.map(b => b.amt));
     for (const a of amtsSeen) {
       const bl = debits.filter(b => b.amt === a && !b.status).sort((x, y) => x.date.localeCompare(y.date) || x.sl - y.sl);
-      const vl = freeOuts().filter(v => v.net === a).sort((x, y) => x.vchDate.localeCompare(y.vchDate));
+      let vl = freeOuts().filter(v => v.net === a).sort((x, y) => x.vchDate.localeCompare(y.vchDate));
+      // vouchers dated after the last statement cannot have their bank line yet: leave them out of the count
+      if (vl.length > bl.length && vl.slice(bl.length).every(v => v.vchDate > lastBank)) vl = vl.slice(0, bl.length);
       if (bl.length < 2 || bl.length !== vl.length) continue;
       if (!bl.every((b, i) => days(vl[i].vchDate, b.date) >= -10 && days(vl[i].vchDate, b.date) <= 45)) continue;
       bl.forEach((b, i) => { const v = vl[i]; v.status = 'Matched'; v.how = 'Amount, in date order (' + bl.length + ' payments of this amount, ' + bl.length + ' vouchers)'; v.bank = [b.sl]; b.status = 'Matched'; b.how = v.how; b.vouchers = [v.blockId]; b.lag = days(v.vchDate, b.date); });
