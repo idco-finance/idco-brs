@@ -161,6 +161,16 @@
     const notTied = bf.filter(f => !/EXACT\s*MATCH/i.test(f.tie || ''));
     ok(!notTied.length, 'Every Bank Book file agrees with the ERP\'s own totals', notTied.length ? notTied.map(f => f.fileName + ' (its Control sheet says ' + (f.tie || 'nothing') + ')').join('; ') + '. Download it again with the latest Bank Book Linearizer: some vouchers are missing from it.' : 'The Control sheet of every Bank Book file says EXACT MATCH.');
     const bookBad = !bookStart || gaps.length > 0 || notTied.length > 0;
+    // Eazypay: only when the statement has Eazypay settlement credits. Every such credit up to the date needs its report
+    // rows, unless a reviewer has already kept it open (for example a report the bank cannot give).
+    const ezAll = rec.bankLines.filter(b => b.type === 'Eazypay settlement' && b.date >= fy && b.date <= asOn);
+    if (ezAll.length) {
+      const miss = ezAll.filter(b => /^EZY_(NO|PART)FILE$/.test(b.code || '') && !b.reviewed);
+      const mon = Array.from(new Set(miss.map(b => b.date.slice(5, 7) + '-' + b.date.slice(0, 4))));
+      ok(!miss.length, 'Eazypay reports cover every Eazypay credit up to ' + nice(asOn),
+        miss.length ? miss.length + ' Eazypay credit(s) of ' + fmt(miss.reduce((a, b) => a + b.amt, 0)) + ' have no matching rows in the Eazypay reports given (month' + (mon.length > 1 ? 's ' : ' ') + mon.join(', ') + '; lines ' + miss.slice(0, 8).map(b => b.sl).join(', ') + (miss.length > 8 ? ' …' : '') + '). Drop the Eazypay report of those days with the other files. If a report cannot be had, choose Keep open on its row in To review.'
+          : ezAll.length + ' Eazypay credits; every one is covered by the reports given or has been reviewed.');
+    }
     ok(!!op, 'Last signed BRS given', op ? 'BRS as on ' + nice(op.asOn) + ' (' + op.fileName + ', sheet "' + op.sheet + '").' : 'Drop the last signed BRS workbook (for example the 31.03.2026 BRS) so that the opening items and the book balance are known.');
     if (op) {
       ok(op.asOn === new Date(t(fy) - DAY).toISOString().slice(0, 10), 'The last BRS is as on the day before the year starts', 'It is as on ' + nice(op.asOn) + '.');
