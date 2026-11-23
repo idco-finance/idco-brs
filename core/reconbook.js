@@ -1,4 +1,4 @@
-/* IDCO Bank Statement to Excel - the reconciliation workbook (Step 1: review in Excel). */
+/* IDCO BRS Tool - the reconciliation workbook (Step 1: review in Excel). */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory(require('./carry.js'));
   else root.StatementReconBook = factory(root.StatementCarry);
@@ -195,7 +195,7 @@
     ws.columns = [{ width: 86 }, { width: 9 }, { width: 22 }, { width: 70 }];
     const T = ws.addRow(['BANK RECONCILIATION STATEMENT AS ON ' + nd(R.asOn)]); T.font = { bold: true, size: 14, color: { argb: TEAL } };
     ws.addRow([R.bankName + ' - A/c ' + R.account + (R.opening.gl ? ' - GL ' + R.opening.gl : '') + (R.opening.name ? ' - ' + R.opening.name : '')]).font = { bold: true };
-    ws.addRow(['Period ' + nd(R.fy) + ' to ' + nd(R.asOn) + '. Made by IDCO Bank Statement to Excel v' + version + ' on ' + nd(when.toISOString().slice(0, 10)) + '. Opening position: BRS as on ' + nd(R.opening.asOn) + ' (' + R.opening.file + ').']).font = { color: { argb: 'FF6B7280' } };
+    ws.addRow(['Period ' + nd(R.fy) + ' to ' + nd(R.asOn) + '. Made by IDCO BRS Tool v' + version + ' on ' + nd(when.toISOString().slice(0, 10)) + '. Opening position: BRS as on ' + nd(R.opening.asOn) + ' (' + R.opening.file + ').']).font = { color: { argb: 'FF6B7280' } };
     ws.addRow([]);
     const H = ws.addRow(['Particulars', 'Items', 'Amount (Rs.)', 'Note']); H.font = { bold: true, color: { argb: 'FFFFFFFF' } }; [1, 2, 3, 4].forEach(c => { H.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: TEAL } }; });
     const money = r => { r.getCell(3).numFmt = MONEY; r.getCell(4).alignment = { wrapText: true, vertical: 'top' }; r.getCell(1).alignment = { wrapText: true, vertical: 'top' }; return r; };
@@ -261,7 +261,7 @@
   }
 
   function build(ExcelJS, rec, when, version) {
-    const wb = new ExcelJS.Workbook(); wb.creator = 'IDCO Bank Statement to Excel v' + version; wb.created = when || new Date();
+    const wb = new ExcelJS.Workbook(); wb.creator = 'IDCO BRS Tool v' + version; wb.created = when || new Date();
     const s = rec.summary, fmt = rec.fmt, nice = rec.nice;
     const R0 = rec.brs && rec.brs.ready ? rec.brs : null;
     if (R0) { brsStatement(wb, rec, R0, when || new Date(), version); idcoFormat(wb, rec, R0); }
@@ -319,7 +319,7 @@
     for (const t of HOWTO) { const r = w0.addRow([t]); w0.mergeCells(r.number, 1, r.number, 5); r.getCell(1).alignment = { wrapText: true, vertical: 'top' }; r.height = t.length > 150 ? 30 : 16; }
     w0.getColumn(3).numFmt = MONEY; w0.getColumn(4).numFmt = MONEY; w0.getColumn(2).alignment = { horizontal: 'center' };
     w0.addRow([]);
-    w0.addRow(['Made by IDCO Bank Statement to Excel v' + version + ' on ' + (when || new Date()).toLocaleString('en-IN') + '. Nothing was uploaded.']).font = { italic: true, color: { argb: 'FF6B7280' } };
+    w0.addRow(['Made by IDCO BRS Tool v' + version + ' on ' + (when || new Date()).toLocaleString('en-IN') + '. Nothing was uploaded.']).font = { italic: true, color: { argb: 'FF6B7280' } };
 
     // ---------------- To review (written for someone who is not an accountant)
     const SEP = ' ¦ ', GSEP = ' ;; ';

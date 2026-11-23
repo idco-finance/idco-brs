@@ -1,4 +1,4 @@
-/* IDCO Bank Statement to Excel - the Excel workbook.
+/* IDCO BRS Tool - the Excel workbook.
  * Same three sheets and the same columns for every bank:
  *   Statement - one row per transaction
  *   Control   - what was checked, with a clear PASS or CHECK
@@ -9,7 +9,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '1.7.0';
+  const VERSION = '1.7.1';
   const TEAL = 'FF0F766E', PAPER = 'FFF7F3EA', INK = 'FF1F2937', GREEN = 'FFD1FAE5', RED = 'FFFEE2E2', AMBER = 'FFFEF3C7', GREY = 'FFE5E7EB';
   const MONEY = '#,##0.00;[Red]-#,##0.00';
 
@@ -19,7 +19,7 @@
 
   function build(ExcelJS, acc, when) {
     const wb = new ExcelJS.Workbook();
-    wb.creator = 'IDCO Bank Statement to Excel v' + VERSION;
+    wb.creator = 'IDCO BRS Tool v' + VERSION;
     wb.created = when || new Date();
 
     // ------------------------------------------------------------ Statement
@@ -117,7 +117,7 @@
     wc.addRow([]);
     const n1 = wc.addRow(['Dates, amounts and balances are read from the statement and proved against the running balance. Type, UTR / Reference and Party are helper columns picked out of the narration and should be treated as a guide.']);
     wc.mergeCells(n1.number, 1, n1.number, 3); n1.getCell(1).alignment = { wrapText: true, vertical: 'top' }; n1.height = 32; n1.getCell(1).font = { italic: true, color: { argb: 'FF4B5563' } };
-    const n2 = wc.addRow(['Made by IDCO Bank Statement to Excel v' + VERSION + ' on ' + (when || new Date()).toLocaleString('en-IN') + '. The statement was read on this computer; nothing was uploaded.']);
+    const n2 = wc.addRow(['Made by IDCO BRS Tool v' + VERSION + ' on ' + (when || new Date()).toLocaleString('en-IN') + '. The statement was read on this computer; nothing was uploaded.']);
     wc.mergeCells(n2.number, 1, n2.number, 3); n2.getCell(1).font = { italic: true, color: { argb: 'FF6B7280' } };
 
     // ------------------------------------------------------------ By Type

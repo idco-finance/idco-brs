@@ -1,4 +1,4 @@
-/* IDCO Bank Statement to Excel - helper columns.
+/* IDCO BRS Tool - helper columns.
  * Reads the narration of a line and fills three best-effort helpers: Type, Reference (UTR etc.) and Party.
  * These never change a date, an amount or a balance. */
 (function (root, factory) {

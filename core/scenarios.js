@@ -1,4 +1,4 @@
-/* IDCO Bank Statement to Excel - the library of standard bank-reconciliation situations.
+/* IDCO BRS Tool - the library of standard bank-reconciliation situations.
  *
  * Every item that is not plainly matched gets a "Kind of item": the name an accountant would use for it in a BRS.
  * The tool still makes no accounting judgement: a kind is a label that says where an item of this sort is

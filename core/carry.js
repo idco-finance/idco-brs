@@ -1,4 +1,4 @@
-/* IDCO Bank Statement to Excel - carry forward.
+/* IDCO BRS Tool - carry forward.
  * The BRS workbook keeps, in a hidden sheet, the inputs that do not change once a month is over: the bank lines
  * (already proved against the running balance), the Eazypay payments and the opening position of the last signed BRS.
  * Next month only the new statement, the new Eazypay reports and the Bank Book from 1 April are needed.

@@ -1,4 +1,4 @@
-/* IDCO Bank Statement to Excel - PDF text layer.
+/* IDCO BRS Tool - PDF text layer.
  * Turns a PDF (through pdf.js) into plain "tokens": a piece of text with its position on the page.
  * Everything after this file works on tokens only and knows nothing about PDFs. */
 (function (root, factory) {

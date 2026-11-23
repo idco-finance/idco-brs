@@ -1,4 +1,4 @@
-/* IDCO Bank Statement to Excel - the decision step.
+/* IDCO BRS Tool - the decision step.
  *
  * A person fills the Decision / Match with / Remark columns of the matching workbook, saves it, and drops it
  * back in together with the statements and Bank Books. This module

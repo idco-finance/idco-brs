@@ -1,4 +1,4 @@
-/* IDCO Bank Statement to Excel - the page.
+/* IDCO BRS Tool - the page.
  * No chrome.* calls here, so the same page also works when opened straight from the folder. */
 (function () {
   'use strict';
@@ -11,7 +11,7 @@
   // (this is what lets the page work both inside the extension and when opened from a folder).
   pdfjsLib.GlobalWorkerOptions.workerSrc = '../lib/pdf.worker.min.js';
 
-  $('ver').textContent = 'IDCO Bank Statement to Excel v' + StatementWorkbook.VERSION;
+  $('ver').textContent = 'IDCO BRS Tool v' + StatementWorkbook.VERSION;
 
   let statements = [];        // every statement read so far
   let books = [], misFiles = [];   // Bank Book (Linearizer) and Eazypay files, for the matching step
@@ -25,7 +25,7 @@
   let busy = false;
 
   // ------------------------------------------------------------ choosing files
-  const BOXES = { last: "Last month's BRS workbook", stmt: 'Bank statement', ezy: 'Eazypay reports', book: 'Bank Book', brs: "Last year's signed BRS" };
+  const BOXES = { last: "Last month's BRS Excel", stmt: 'Bank statement', ezy: 'Eazypay reports', book: 'Bank Book', brs: "Last year's signed BRS" };
   const boxEls = Array.from(drop.querySelectorAll('.box'));
   boxEls.forEach(b => {
     b.addEventListener('click', () => { if (!busy) { pendingBox = b.dataset.kind; fileInput.click(); } });
@@ -195,7 +195,7 @@
     $('dlall').hidden = accounts.length < 2;
     renderBoxes();
     const ne = $('notices'); ne.innerHTML = ''; ne.hidden = !notices.length; notices.forEach(t => ne.appendChild(el('div', '', t)));
-    $('how').hidden = has;
+    $('how').open = !has;
     if (has) {
       const nPass = accounts.filter(a => a.pass).length;
       const nSt = accounts.reduce((n, a) => n + a.files.length, 0);
@@ -234,9 +234,9 @@
     brsFiles.forEach(b => item('brs', b.fileName, 'read'));
     if (!brsFiles.length) carried.forEach(a => item('brs', a.carry.op.fileName, 'as on ' + nice(a.carry.op.asOn) + '  ·  carried in box 1'));
     const pill = {
-      last: reviews.length ? ['RECEIVED', 'pass'] : ['FROM 2ND MONTH', 'opt'],
-      stmt: statements.length ? ['RECEIVED', 'pass'] : carried.length ? ['ADD NEW MONTH', 'need'] : ['NEEDED', 'need'],
-      ezy: misFiles.length ? ['RECEIVED', 'pass'] : items.ezy.length ? ['CARRIED', 'pass'] : anyEzLine ? ['NEEDED', 'need'] : accounts.length ? ['NOT NEEDED', 'opt'] : ['IF ANY', 'opt'],
+      last: reviews.length ? ['RECEIVED', 'pass'] : ['NOT NEEDED THE FIRST TIME', 'opt'],
+      stmt: statements.length ? ['RECEIVED', 'pass'] : carried.length ? (books.length && carried.every(a => a.lastDate >= books.map(b => b.to || '').sort().pop()) ? ['CARRIED', 'pass'] : ['ADD NEW MONTH', 'need']) : ['NEEDED', 'need'],
+      ezy: misFiles.length ? ['RECEIVED', 'pass'] : items.ezy.length ? ['CARRIED', 'pass'] : anyEzLine ? ['NEEDED', 'need'] : accounts.length ? ['NOT NEEDED', 'opt'] : ['ONLY IF THE ACCOUNT HAS IT', 'opt'],
       book: books.length ? ['RECEIVED', 'pass'] : ['NEEDED', 'need'],
       brs: brsFiles.length ? ['RECEIVED', 'pass'] : opCarried ? ['CARRIED', 'pass'] : ['NEEDED ONCE', 'need']
     };
@@ -244,6 +244,7 @@
       const k = b.dataset.kind, p = b.querySelector('[data-pill]'), ul = b.querySelector('.box-files');
       p.textContent = pill[k][0]; p.className = 'pill ' + pill[k][1];
       b.classList.toggle('has', items[k].length > 0);
+      b.classList.toggle('need', pill[k][1] === 'need' && !items[k].length);
       ul.innerHTML = '';
       items[k].forEach(it => { const li = el('li', it.warn ? 'warn' : ''); li.appendChild(el('b', '', it.name)); li.appendChild(el('span', '', it.text)); ul.appendChild(li); });
     });
@@ -257,7 +258,7 @@
     title.appendChild(h);
     title.appendChild(el('div', 'sub', nice(a.firstDate) + ' to ' + nice(a.lastDate) + '  ·  ' + a.rows.length + ' lines  ·  ' + a.files.length + (a.files.length === 1 ? ' statement' : ' statements joined')));
     head.appendChild(title);
-    const btn = el('button', 'btn primary', 'Download Excel'); btn.addEventListener('click', () => download(a)); head.appendChild(btn);
+    const btn = el('button', 'btn ' + (a.recon ? 'ghost' : 'primary'), 'Download Excel'); btn.title = 'The bank statement as a clean Excel sheet'; btn.addEventListener('click', () => download(a)); head.appendChild(btn);
     c.appendChild(head);
 
     c.appendChild(el('div', 'verdict', a.pass
@@ -310,11 +311,17 @@
       return box;
     }
     const s = a.recon.summary; const n = k => (s.bankBy[k] ? s.bankBy[k].n : 0), vn = k => (s.vBy[k] ? s.vBy[k].n : 0);
-    const head = el('div', 'recon-head');
-    const t = el('div'); t.appendChild(el('b', '', 'Matching with the Bank Book'));
+    const B0 = a.recon.brs && a.recon.brs.ready ? a.recon.brs : null;
+    const failed0 = B0 ? B0.checks.filter(c => !c.pass).length : 0;
+    const head = el('div', 'recon-head' + (B0 ? ' banner ' + (B0.diff === 0 && !failed0 ? 'good' : 'warn') : ''));
+    if (B0) { const ic = el('div', 'banner-icon'); ic.innerHTML = B0.diff === 0 && !failed0 ? '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg>' : '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v7"></path><path d="M12 17.5v.5"></path></svg>'; head.appendChild(ic); }
+    const t = el('div', 'banner-text');
+    if (B0) { t.appendChild(el('div', 'banner-title', 'BRS as on ' + nice(B0.asOn) + ': ' + (B0.diff === 0 ? 'difference nil' : 'difference ' + fmt(B0.diff))));
+      t.appendChild(el('div', 'banner-sub', (failed0 ? failed0 + ' thing' + (failed0 === 1 ? '' : 's') + ' to fix before signing (see below). ' : B0.diff === 0 ? 'Every check passed. ' : '') + (a.recon.pendingCount ? a.recon.pendingCount + ' item(s) are waiting for a decision in the To review sheet.' : 'Nothing is waiting for a decision.'))); }
+    else t.appendChild(el('b', '', 'Matching with the Bank Book'));
     t.appendChild(el('div', 'sub', s.bookFiles.length + ' Bank Book file(s), vouchers ' + nice(s.firstBook) + ' to ' + nice(s.lastBook) + '  ·  ' + s.misFiles.length + ' Eazypay file(s), ' + s.eazypay.payments + ' payments'));
     head.appendChild(t);
-    const btn = el('button', 'btn primary', a.recon.brs && a.recon.brs.ready ? 'Download BRS Excel' : 'Download matching Excel'); btn.addEventListener('click', () => downloadRecon(a)); head.appendChild(btn);
+    const btn = el('button', 'btn primary' + (B0 ? ' big' : ''), a.recon.brs && a.recon.brs.ready ? 'Download BRS Excel' : 'Download matching Excel'); btn.addEventListener('click', () => downloadRecon(a)); head.appendChild(btn);
     box.appendChild(head);
     box.appendChild(brsPanel(a));
     const grid = el('div', 'figs');
@@ -331,7 +338,7 @@
     box.appendChild(grid);
     const dc = s.decisions;
     if (dc && dc.total) {
-      const dl = el('div', 'look'); dl.appendChild(el('b', '', 'Decisions read from ' + a.recon.reviewFiles.join(', ') + ':'));
+      const dl = el('div', dc.notApplied || a.recon.reviewProblems.length ? 'look' : 'fine'); dl.appendChild(el('b', '', 'Decisions read from ' + a.recon.reviewFiles.join(', ') + ':'));
       const ul = el('ul');
       ul.appendChild(el('li', '', dc.applied + ' of ' + dc.total + ' applied.' + (dc.notApplied ? ' ' + dc.notApplied + ' could not be applied; the Decisions sheet of the new Excel says why.' : '') + (dc.absent ? ' ' + dc.absent + ' are kept for later, because their items are not in the files given this time.' : '')));
       a.recon.reviewProblems.forEach(w => ul.appendChild(el('li', '', w)));
@@ -369,8 +376,11 @@
     if (!R) { wrap.appendChild(el('div', 'sub', 'No complete month is covered by both the statements and the Bank Book yet.')); return wrap; }
     if (!R.ready) { const ul = el('ul'); R.checks.filter(c => !c.pass).forEach(c => ul.appendChild(el('li', '', c.what + ': ' + c.detail)));
       if (rec.noCarry && rec.noCarry.length && (a.from || a.firstDate) > R.fy) ul.appendChild(el('li', '', NOCARRY(rec))); const lk = el('div', 'look'); lk.appendChild(el('b', '', 'The BRS cannot be made yet:')); lk.appendChild(ul); wrap.appendChild(lk); return wrap; }
+    const big = el('div', 'bigfigs'); const bf = (k, v, n, cls) => { const f = el('div', 'bigfig ' + (cls || '')); f.appendChild(el('div', 'k', k)); f.appendChild(el('div', 'v', v)); f.appendChild(el('div', 'n', n)); big.appendChild(f); };
+    bf('Balance as per Bank Book', fmt(R.book), 'Last signed BRS + vouchers from 1 April'); bf('Balance as per bank statement', fmt(R.bank), 'Printed by the bank on ' + nice(R.asOn)); bf('Difference', fmt(R.diff), R.diff === 0 ? 'Worked out = printed' : 'Worked out ' + fmt(R.computed), R.diff === 0 ? 'good' : 'bad');
+    wrap.appendChild(big);
     const tbl = el('table', 'brs-table');
-    const row = (label, amt, cls, n) => { const tr = el('tr', cls || ''); tr.appendChild(el('td', '', label)); tr.appendChild(el('td', 'n', n === undefined ? '' : String(n))); tr.appendChild(el('td', 'amt', amt === null ? '' : fmt(amt))); tbl.appendChild(tr); };
+    const row = (label, amt, cls, n) => { const tr = el('tr', cls || ''); const m = /^(Add|Less): (.*)$/.exec(label); const td = el('td', '', m ? '' : label); if (m) { td.appendChild(el('span', 'tag ' + m[1].toLowerCase(), m[1])); td.appendChild(document.createTextNode(' ' + m[2])); } tr.appendChild(td); tr.appendChild(el('td', 'n', n === undefined ? '' : String(n))); tr.appendChild(el('td', 'amt', amt === null ? '' : fmt(amt))); tbl.appendChild(tr); };
     row('Balance as per Bank Book as on ' + nice(R.asOn), R.book, 'tot');
     R.order.forEach(h => { const t = R.totals[h]; if (!t.n && /^DIFF|^BOOKNET/.test(h)) return; row(R.heads[h], t.amt, '', t.n); });
     if (R.sweepN) row((R.sweep >= 0 ? 'Add' : 'Less') + ': Net amount moved between the account and linked deposits (sweep)', Math.abs(R.sweep), '', R.sweepN);

@@ -1,4 +1,4 @@
-/* IDCO Bank Statement to Excel - the BRS as on a chosen date.
+/* IDCO BRS Tool - the BRS as on a chosen date.
  *
  * matchOpening(rec, op)  ties the items of the last signed BRS (31 March) to the bank lines and vouchers of the
  *                        new year that clear them (same amount; reference found = Matched, else Suggested).

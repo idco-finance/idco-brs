@@ -1,4 +1,4 @@
-/* IDCO Bank Statement to Excel - the general statement reader.
+/* IDCO BRS Tool - the general statement reader.
  *
  * It does not know any bank's layout. It works from four ideas:
  *   1. The table is found by its column headings (Date / Debit or Withdrawal / Credit or Deposit / Balance).

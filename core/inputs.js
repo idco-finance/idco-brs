@@ -1,4 +1,4 @@
-/* IDCO Bank Statement to Excel - reading the two Excel inputs of the reconciliation:
+/* IDCO BRS Tool - reading the two Excel inputs of the reconciliation:
  *   the Bank Book workbook made by the IDCO Bank Book Linearizer, and the Eazypay MIS report from the bank.
  * Works on an ExcelJS workbook that has already been loaded. Money is returned in paise. */
 (function (root, factory) {

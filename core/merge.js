@@ -1,4 +1,4 @@
-/* IDCO Bank Statement to Excel - joining several statements of one account.
+/* IDCO BRS Tool - joining several statements of one account.
  * Files are grouped by bank + account number, put in date order and joined.
  * The closing balance of one statement must equal the opening balance of the next; overlaps are removed, gaps are reported. */
 (function (root, factory) {

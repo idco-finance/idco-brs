@@ -1,4 +1,4 @@
-# IDCO Bank Statement to Excel and BRS
+# IDCO BRS Tool and BRS
 
 **Open the tool:** https://idco-finance.github.io/idco-brs/
 

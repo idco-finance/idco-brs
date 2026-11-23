@@ -1,4 +1,4 @@
-/* IDCO Bank Statement to Excel - the matching step of the BRS.
+/* IDCO BRS Tool - the matching step of the BRS.
  *
  * Inputs : bank lines of one account (from the statement reader), Bank Book files (Linearizer), Eazypay files.
  * Output : every bank line and every voucher with a status, the evidence and a plain reason.

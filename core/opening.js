@@ -1,4 +1,4 @@
-/* IDCO Bank Statement to Excel - the last signed BRS, read as the opening position.
+/* IDCO BRS Tool - the last signed BRS, read as the opening position.
  *
  * IDCO's yearly BRS workbook has one summary sheet ("BRS") with nine accounts side by side per block
  * (GL code, A/c no, balance as per Bank Book, the four headings, balance as per bank statement), and one
