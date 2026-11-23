@@ -1,4 +1,4 @@
-# IDCO BRS Tool and BRS
+# IDCO BRS Tool
 
 **Open the tool:** https://idco-finance.github.io/idco-brs/
 
