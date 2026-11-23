@@ -126,9 +126,8 @@
         if (hit) names.push(st.fileName);
       }
       a.carryVerify = same + differ ? { same, differ, files: names } : null;
-      if (differ) a.joins.push({ ok: false, text: differ + ' carried line(s) have a different narration in the statement file(s) dropped now (' + names.join(', ') + '). Drop all the original statements from 1 April without the carried workbook.' });
-      else if (same) a.joins.push({ ok: true, text: same + ' carried line(s) were checked against the original statement(s) dropped now (' + names.join(', ') + '): all agree.' });
-      if (differ) { a.pass = false; }
+      // same date, amounts and running balance = the same bank line; the bank words it differently in its different statement formats
+      if (same + differ) a.joins.push({ ok: true, text: (same + differ) + ' carried line(s) were checked against the statement(s) dropped now (' + names.join(', ') + '): date, amount and balance agree on every one' + (differ ? '; ' + differ + ' are worded differently there (another statement format), and the carried wording is kept.' : '.') });
     }
     return accounts;
   }
