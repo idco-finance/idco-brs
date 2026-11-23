@@ -234,9 +234,9 @@
     brsFiles.forEach(b => item('brs', b.fileName, 'read'));
     if (!brsFiles.length) carried.forEach(a => item('brs', a.carry.op.fileName, 'as on ' + nice(a.carry.op.asOn) + '  ·  carried in box 1'));
     const pill = {
-      last: reviews.length ? ['RECEIVED', 'pass'] : ['NOT NEEDED THE FIRST TIME', 'opt'],
+      last: reviews.length ? ['RECEIVED', 'pass'] : ['NOT NEEDED FIRST TIME', 'opt'],
       stmt: statements.length ? ['RECEIVED', 'pass'] : carried.length ? (books.length && carried.every(a => a.lastDate >= books.map(b => b.to || '').sort().pop()) ? ['CARRIED', 'pass'] : ['ADD NEW MONTH', 'need']) : ['NEEDED', 'need'],
-      ezy: misFiles.length ? ['RECEIVED', 'pass'] : items.ezy.length ? ['CARRIED', 'pass'] : anyEzLine ? ['NEEDED', 'need'] : accounts.length ? ['NOT NEEDED', 'opt'] : ['ONLY IF THE ACCOUNT HAS IT', 'opt'],
+      ezy: misFiles.length ? ['RECEIVED', 'pass'] : items.ezy.length ? ['CARRIED', 'pass'] : anyEzLine ? ['NEEDED', 'need'] : accounts.length ? ['NOT NEEDED', 'opt'] : ['ONLY IF ACCOUNT HAS IT', 'opt'],
       book: books.length ? ['RECEIVED', 'pass'] : ['NEEDED', 'need'],
       brs: brsFiles.length ? ['RECEIVED', 'pass'] : opCarried ? ['CARRIED', 'pass'] : ['NEEDED ONCE', 'need']
     };
