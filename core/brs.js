@@ -171,13 +171,14 @@
         miss.length ? miss.length + ' Eazypay credit(s) of ' + fmt(miss.reduce((a, b) => a + b.amt, 0)) + ' have no matching rows in the Eazypay reports given (month' + (mon.length > 1 ? 's ' : ' ') + mon.join(', ') + '; lines ' + miss.slice(0, 8).map(b => b.sl).join(', ') + (miss.length > 8 ? ' …' : '') + '). Drop the Eazypay report of those days with the other files. If a report cannot be had, choose Keep open on its row in To review.'
           : ezAll.length + ' Eazypay credits; every one is covered by the reports given or has been reviewed.');
     }
+    if (rec.carryProblems && rec.carryProblems.length) ok(false, 'Carried data agrees with the files given now', rec.carryProblems.join(' '));
     ok(!!op, 'Last signed BRS given', op ? 'BRS as on ' + nice(op.asOn) + ' (' + op.fileName + ', sheet "' + op.sheet + '").' : 'Drop the last signed BRS workbook (for example the 31.03.2026 BRS) so that the opening items and the book balance are known.');
     if (op) {
       ok(op.asOn === new Date(t(fy) - DAY).toISOString().slice(0, 10), 'The last BRS is as on the day before the year starts', 'It is as on ' + nice(op.asOn) + '.');
       ok(op.bank === acc.opening, 'Bank balance in the last BRS = opening balance of the statement', 'Last BRS ' + fmt(op.bank) + ', statement opening on ' + nice(stFrom) + ' ' + fmt(acc.opening) + '.');
       op.checks.forEach(c => checks.push(c));
     }
-    if (checks.some(c => !c.pass) && (!op || stFrom > fy || stTo < asOn || bookBad)) return { asOn, fy, checks, ready: false };
+    if (checks.some(c => !c.pass) && (!op || stFrom > fy || stTo < asOn || bookBad || acc.gap)) return { asOn, fy, checks, ready: false };
 
     // groups
     const parent = new Map(); const find = x => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };

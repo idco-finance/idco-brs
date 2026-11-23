@@ -20,12 +20,19 @@
   </header>
 
   <main>
-    <section id="drop" class="drop" tabindex="0" role="button" aria-label="Choose bank statement PDF files">
-      <div class="drop-icon" aria-hidden="true">PDF</div>
-      <div class="drop-title">Drop bank statement PDFs here</div>
-      <div class="drop-sub">or <span class="link">click to choose files</span>. You can add several months, and several accounts, together.<br>To match with the books, also drop the Bank Book workbooks from the Linearizer and the Eazypay files (.xlsx).<br>For the BRS statement, also drop the last signed BRS workbook (for example the BRS as on 31.03.2026).<br>If you have already decided items in an earlier matching Excel, drop that saved file too.</div>
+    <section id="drop" class="boxes" aria-label="Files for the BRS">
+      <div class="boxes-head"><b>Drop each file in its box</b><span> - or drop everything anywhere on this page: every file is recognised by what is inside it and put in the right box.</span></div>
+      <div class="boxgrid">
+        <div class="box" data-kind="last" tabindex="0" role="button"><div class="box-top"><span class="box-no">1</span><span class="box-title">Last month's BRS workbook</span><span class="pill" data-pill></span></div><div class="box-sub">The BRS Excel made by this page last month, with your decisions. From the second month on.</div><ul class="box-files"></ul></div>
+        <div class="box" data-kind="stmt" tabindex="0" role="button"><div class="box-top"><span class="box-no">2</span><span class="box-title">Bank statement</span><span class="pill" data-pill></span></div><div class="box-sub">PDF from the bank. Only the new month when box 1 is filled; otherwise every month from 1 April.</div><ul class="box-files"></ul></div>
+        <div class="box" data-kind="ezy" tabindex="0" role="button"><div class="box-top"><span class="box-no">3</span><span class="box-title">Eazypay reports</span><span class="pill" data-pill></span></div><div class="box-sub">Excel reports of the payment gateway. Only for an account that receives Eazypay collections.</div><ul class="box-files"></ul></div>
+        <div class="box" data-kind="book" tabindex="0" role="button"><div class="box-top"><span class="box-no">4</span><span class="box-title">Bank Book</span><span class="pill" data-pill></span></div><div class="box-sub">The clean workbook from the Bank Book Linearizer, always from 1 April to the BRS month.</div><ul class="box-files"></ul></div>
+        <div class="box" data-kind="brs" tabindex="0" role="button"><div class="box-top"><span class="box-no">5</span><span class="box-title">Last year's signed BRS</span><span class="pill" data-pill></span></div><div class="box-sub">The yearly BRS Excel as on 31 March (.xls or .xlsx). Only the first time; after that box 1 carries it.</div><ul class="box-files"></ul></div>
+      </div>
       <input id="file" type="file" accept="application/pdf,.pdf,.xlsx,.xls" multiple hidden>
     </section>
+
+    <section id="notices" class="notices" hidden></section>
 
     <section id="progress" class="progress" hidden>
       <div class="bar"><div id="barfill" class="barfill"></div></div>
@@ -46,12 +53,12 @@
     <section class="how" id="how">
       <h2>How it works</h2>
       <ol>
-        <li><b>Drop the PDFs.</b> Any order. If a file is locked, you will be asked for its password; the password is used once and not kept.</li>
-        <li><b>Read the result.</b> A green <span class="pill pass">PASS</span> means every line agrees with the running balance and with the totals the bank prints. An amber <span class="pill check">CHECK</span> tells you the page and line to look at.</li>
-        <li><b>Download the Excel file.</b> One file per bank account, with all the months joined in date order.</li>
-        <li><b>To match with the books (optional).</b> Drop the Bank Book workbooks made by the Bank Book Linearizer for the same account, and the Eazypay reports if the account has them. A second Excel file lists what matched and what needs a look.</li>
-        <li><b>BRS as on a month (optional).</b> Also drop the last signed BRS workbook (the yearly BRS Excel, .xls or .xlsx). Choose the month: the BRS runs from 1 April to the end of that month, under the usual headings, with every item listed.</li>
-        <li><b>To decide (optional).</b> In that second Excel file, open the To review sheet and fill the Decision column (Accept, Reject, Keep open) or type the other side in Match with. Save it. Next time drop it here with the other files: your decisions are applied again and only the undecided items come back.</li>
+        <li><b>The first time for an account:</b> drop every bank statement from 1 April (box 2), the Eazypay reports if the account has them (box 3), the Bank Book from 1 April made by the Bank Book Linearizer (box 4) and last year's signed BRS (box 5).</li>
+        <li><b>Choose the month</b> under "BRS as on". The BRS always runs from 1 April to the end of that month. Download the BRS Excel.</li>
+        <li><b>Decide.</b> In the BRS Excel open the To review sheet and fill the Decision column (Accept, Reject, Keep open) or type the other side in Match with. Save the file.</li>
+        <li><b>Every month after that:</b> drop last month's BRS Excel (box 1), the new month's statement (box 2), the new month's Eazypay reports (box 3) and the Bank Book from 1 April (box 4). The earlier statements, the earlier reports, last year's BRS and your decisions are carried inside the BRS Excel.</li>
+        <li><b>Read the result.</b> A green <span class="pill pass">PASS</span> means every line agrees with the running balance and with the totals the bank prints. An amber <span class="pill check">CHECK</span> tells you what to look at. If a file is locked, you will be asked for its password; it is used once and not kept.</li>
+        <li><b>Keep the original PDFs and reports.</b> Dropping all of them from 1 April always works, with or without last month's BRS Excel.</li>
       </ol>
       <p class="fine">Scanned or photographed statements cannot be read, because they contain a picture and no text.</p>
     </section>
@@ -88,6 +95,7 @@
   <script src="../core/decisions.js"></script>
   <script src="../core/opening.js"></script>
   <script src="../core/brs.js"></script>
+  <script src="../core/carry.js"></script>
   <script src="../core/reconbook.js"></script>
   <script src="page.js"></script>
 </body>

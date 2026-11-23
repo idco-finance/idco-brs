@@ -1,8 +1,8 @@
 /* IDCO Bank Statement to Excel - the reconciliation workbook (Step 1: review in Excel). */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.StatementReconBook = factory();
-})(typeof self !== 'undefined' ? self : this, function () {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./carry.js'));
+  else root.StatementReconBook = factory(root.StatementCarry);
+})(typeof self !== 'undefined' ? self : this, function (Carry) {
   'use strict';
   const TEAL = 'FF0F766E', GREEN = 'FFD1FAE5', AMBER = 'FFFEF3C7', RED = 'FFFEE2E2', GREY = 'FFE5E7EB', BLUE = 'FFDBEAFE';
   const MONEY = '#,##0.00;[Red]-#,##0.00';
@@ -409,7 +409,36 @@
     const w6 = sheet(wb, 'BRS headings', [['Kind of item', 44], ['Usual place in a BRS (from the balance as per Bank Book)', 52], ['What it means', 80], ['Items in this file', 10], ['Amount', 20, 'm'], ['How it is recognised', 44]]);
     (rec.kinds || []).forEach(k => { const r = w6.addRow([k.name, k.brs, k.meaning, k.n || null, k.n ? rs(k.amt) : null, k.seen ? 'Seen and tested on IDCO files' : 'From the usual wording of banks; not yet seen in IDCO files. Please confirm each one.']); [2, 3, 6].forEach(c => { r.getCell(c).alignment = { wrapText: true, vertical: 'top' }; }); if (k.n) r.getCell(1).font = { bold: true }; });
     finish(w6);
+    sources(wb, rec, version, when || new Date());
     return wb;
+  }
+
+  // ---------------- what changed in the books since the last BRS, the files this workbook stands on, and the data carried to next month
+  function sources(wb, rec, version, when) {
+    const nice = rec.nice, fmt = rec.fmt, src = rec.src || {}, acc = src.acc;
+    const ch = rec.bookChanges;
+    if (ch) {
+      const w = sheet(wb, 'Changes in books', [['What changed', 44], ['Voucher', 14], ['Voucher date', 12, 'd'], ['Party', 40], ['Amount now', 18, 'm'], ['Last time', 22, 't'], ['Now', 22, 't']]);
+      ch.rows.forEach(r => w.addRow([r.what, r.voucher, d(r.date), r.party, rs(r.amt), r.was, r.now]));
+      if (!ch.rows.length) w.addRow(['Nothing changed in the vouchers dated up to ' + nice(ch.upto) + ' since ' + ch.workbook + ' was made.']);
+      finish(w);
+    }
+    if (!acc) return;
+    const packed = Carry ? Carry.pack(rec, version, when) : null;
+    const w = sheet(wb, 'Sources', [['Kind of file', 22], ['File', 52], ['From', 12, 'd'], ['To', 12, 'd'], ['Lines', 9], ['Opening balance', 18, 'm'], ['Closing balance', 18, 'm'], ['Check', 14], ['Read by', 12, 't'], ['First used in BRS as on', 14, 't'], ['Came from', 44]]);
+    const asOn = rec.brs && rec.brs.asOn ? nice(rec.brs.asOn) : '';
+    (acc.files || []).forEach(f => w.addRow(['Bank statement', f.fileName, d(f.firstDate), d(f.lastDate), f.lines, rs(f.opening), rs(f.closing), f.pass ? 'PASS' : 'CHECK', 'v' + (f.readBy || version), f.firstUsed ? nice(f.firstUsed) : asOn, f.carried ? 'Carried in ' + f.carried : 'The PDF, read now']));
+    (src.mis || []).forEach(f => { const ds = f.rows.map(r => r.settle).filter(Boolean).sort(); w.addRow(['Eazypay report', f.fileName, d(ds[0]), d(ds[ds.length - 1]), f.rows.length, null, null, '', '', f.firstUsed ? nice(f.firstUsed) : asOn, f.carried ? 'Carried in ' + f.carried : 'The report, read now']); });
+    (rec.summary.bookFiles || []).forEach(f => w.addRow(['Bank Book', f.fileName, d(f.from), d(f.to), f.blocks, null, null, f.tie || '', f.madeBy ? 'Linearizer v' + f.madeBy : '', asOn, 'The Linearizer workbook, read now (taken afresh every time)']));
+    if (src.op) w.addRow(['Last signed BRS', src.op.fileName, null, d(src.op.asOn), (src.op.items || []).length, rs(src.op.book), rs(src.op.bank), (src.op.checks || []).every(c => c.pass) ? 'PASS' : 'CHECK', '', '', acc.carry && src.opCarried ? 'Carried in ' + acc.carry.workbook : 'The BRS workbook, read now']);
+    (rec.reviewFiles || []).forEach(n => w.addRow(['Decisions', n, null, null, null, null, null, '', '', '', 'The reviewed BRS workbook, read now']));
+    w.addRow([]);
+    const note = t => { const r = w.addRow([t]); r.getCell(1).alignment = { wrapText: false }; r.font = { color: { argb: 'FF6B7280' } }; };
+    note(packed ? 'This workbook carries the bank lines' + (packed.ez ? ', the Eazypay payments' : '') + ' and the items of the last signed BRS. Next month drop this workbook with the new statement' + (packed.ez ? ', the new Eazypay reports' : '') + ' and the Bank Book from 1 April.'
+      : 'Nothing is carried in this workbook' + (!src.op ? ' (the last signed BRS was not given).' : ' (the statements are not complete and proved).') + ' Next month drop all the files from 1 April.');
+    note('Only the files are carried, not the matching: everything is matched again from 1 April each time. Keep the original PDFs and reports.');
+    finish(w);
+    if (packed) Carry.write(wb, packed);
   }
   return { build, pendingOf };
 });

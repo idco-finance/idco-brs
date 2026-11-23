@@ -26,11 +26,17 @@ tool's code; it contains no bank data.
 
 ## How to use
 
-1. Open the link above.
-2. Drop the statement PDFs on the page. If a PDF is locked, the tool asks for its password (used once, not saved).
-3. To match with the books, also drop the Bank Book workbooks from the Linearizer and the Eazypay files.
-4. Download the Excel files. In the matching Excel, open the **To review** sheet and fill the **Decision** column.
-5. Save that Excel. Next time, drop it in together with the other files: your decisions are applied again.
+1. Open the link above. The page has five boxes; drop each file in its box, or drop everything anywhere on
+   the page (every file is recognised by what is inside it).
+2. **The first time for an account:** every bank statement from 1 April (PDF; if it is locked, the tool asks for
+   its password, used once and not saved), the Eazypay reports if the account has them, the Bank Book from
+   1 April made by the Linearizer, and last year's signed BRS.
+3. Choose the month under "BRS as on" and download the BRS Excel. Open its **To review** sheet, fill the
+   **Decision** column and save.
+4. **Every month after that:** last month's BRS Excel, the new month's statement, the new month's Eazypay
+   reports and the Bank Book from 1 April. The earlier statements and reports, last year's BRS and your
+   decisions are carried inside the BRS Excel. Everything is matched again from 1 April each time.
+5. Keep the original PDFs and reports. Dropping all of them from 1 April always works.
 
 The tool lists and matches. It never books, changes or deletes anything in the ERP or at the bank.
 The signed BRS remains the responsibility of the person doing it.

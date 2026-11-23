@@ -65,7 +65,7 @@
     table(wb.getWorksheet('5_Control_TieOut')).rows.forEach(r => { ctl[str(r.Metric)] = val(r.Value); });
     const out = { fileName, gl: str(ctl['Bank GL']), account: str(ctl['Bank Account No']), accountName: str(ctl['Bank Account Name']), division: str(ctl['Division']),
       from: iso(ctl['Period From']), to: iso(ctl['Period To']), tie: str(ctl['Arithmetic Check']), generated: str(ctl['Generated']),
-      debit: paise(ctl['ERP Summary Debit']), credit: paise(ctl['ERP Summary Credit']), blocks: [], urns: [] };
+      madeBy: (str(ctl['Generated']).match(/Linearizer v(\d+\.\d+\.\d+)/i) || [])[1] || '', debit: paise(ctl['ERP Summary Debit']), credit: paise(ctl['ERP Summary Credit']), blocks: [], urns: [] };
     for (const r of table(wb.getWorksheet('1_Vouchers_Linear')).rows) {
       const id = str(r['Block ID']); if (!id) continue;
       const b = { blockId: id, voucherId: str(r['Voucher ID']), type: str(r['Vch Type']), vchNo: str(r['Vch No']), vchDate: iso(r['Vch Date']), mrNo: str(r['MR No']), mrDate: iso(r['MR Date']),

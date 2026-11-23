@@ -69,6 +69,7 @@
       for (const k of ids) if (blockMap.has(k)) { const old = blockMap.get(k); old.dropped = true; }
       for (const b of f.blocks) blockMap.set(b.blockId + '|' + b.vchDate, Object.assign({}, b, { key: b.blockId + '|' + b.vchDate, status: '', how: '', bank: [], note: '', instruments: b.instruments.map(x => Object.assign({ used: null }, x)) }));
       for (const u of f.urns) urnAll.push(Object.assign({ key: u.blockId + '|' + u.vchDate, file: f.fileName }, u));
+      { const m = (f.madeBy || '').match(/(\d+)\.(\d+)\.(\d+)/); if (m && (+m[1] * 1e6 + +m[2] * 1e3 + +m[3]) < 1002001) notes.push('Bank Book ' + f.fileName + ' was made by Linearizer v' + f.madeBy + '. Versions before 1.2.1 could put another voucher\'s instrument date on a voucher. Fetch the Bank Book again with Linearizer v1.2.1 or later.'); }
       if (f.tie && !/EXACT/i.test(f.tie)) notes.push('Bank Book ' + f.fileName + ': its own Control sheet says "' + f.tie + '", so some vouchers may be missing from it. Download it again with the latest Linearizer.');
     }
     const V = Array.from(blockMap.values()).sort((a, b) => (a.vchDate || '').localeCompare(b.vchDate || '') || a.blockId.localeCompare(b.blockId, undefined, { numeric: true }));
@@ -82,7 +83,12 @@
 
     // Eazypay: one row per TranID
     const M = new Map();
-    for (const f of mis) for (const r of f.rows) if (!M.has(r.tran)) M.set(r.tran, Object.assign({ bankSl: null, vouchers: [], booked: 0, status: '' }, r));
+    // the reports are taken in date order, so that the result does not depend on the order the files were dropped in
+    // (a file carried from last month keeps the place it had then)
+    mis.forEach(f => { if (!f.firstSettle) f.firstSettle = f.rows.reduce((a, r) => (r.settle && (!a || r.settle < a) ? r.settle : a), ''); });
+    mis = mis.slice().sort((a, b) => a.firstSettle.localeCompare(b.firstSettle) || a.fileName.localeCompare(b.fileName));
+    const misNew = new Map();
+    for (const f of mis) { let n = 0; for (const r of f.rows) if (!M.has(r.tran)) { M.set(r.tran, Object.assign({ bankSl: null, vouchers: [], booked: 0, status: '' }, r)); n++; } misNew.set(f, n); }
     const bySettle = new Map();
     for (const m of M.values()) { if (!bySettle.has(m.settle)) bySettle.set(m.settle, []); bySettle.get(m.settle).push(m); }
     const urnByTran = new Map();
@@ -409,8 +415,8 @@
       eazypay: { payments: pays.length, inStatement: inLumps.length, notInBooks: inLumps.filter(m => m.status === 'Not in books').length, notInBooksAmt: sum(inLumps.filter(m => m.status === 'Not in books'), m => m.amt),
         partly: inLumps.filter(m => m.status === 'Booked in part').length },
       sweepOut: sum(B.filter(b => b.type === 'Sweep out'), b => -b.amt), sweepIn: sum(B.filter(b => b.type === 'Sweep in'), b => b.amt),
-      bookFiles: bookFiles.map(f => ({ fileName: f.fileName, from: f.from, to: f.to, tie: f.tie, blocks: f.blocks.length, gl: f.gl, account: f.account })),
-      misFiles: mis.map(f => ({ fileName: f.fileName, rows: f.rows.length })),
+      bookFiles: bookFiles.map(f => ({ fileName: f.fileName, from: f.from, to: f.to, tie: f.tie, madeBy: f.madeBy || '', blocks: f.blocks.length, gl: f.gl, account: f.account })),
+      misFiles: mis.map(f => ({ fileName: f.fileName, rows: misNew.get(f) })),
       notes
     };
     // months of Bank Book missing inside the statement period
@@ -421,7 +427,7 @@
     }
     for (const v of V) v.ikey = 'V|' + v.key;
     for (const m of pays) m.ikey = 'E|' + m.tran;
-    return { bankLines: B, vouchers: V, payments: pays, summary, fmt, nice };
+    return { bankLines: B, vouchers: V, payments: pays, summary, fmt, nice, misUsed: mis };
   }
 
   /** Counts again after a reviewer's decisions have changed some statuses. */
